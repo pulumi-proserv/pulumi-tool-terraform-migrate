@@ -155,10 +155,23 @@ func LoadTerraformState(ctx context.Context, opts LoadTerraformStateOptions) (fi
 		return nil, fmt.Errorf("tofu init failed: %w", err)
 	}
 
-	// If given an explicit StateFilePath, use provider rewrite to load it directly.
+	// If given an explicit StateFilePath, try ShowStateFile first; fall back to provider rewrite
+	// if OpenTofu cannot resolve Terraform registry provider references.
 	if opts.StateFilePath != "" {
-		fmt.Fprintln(os.Stderr, "Loading state from file with provider rewrite.")
-		return loadStateFileWithRewrite(ctx, tofu, opts.StateFilePath)
+		absStateFile, err := filepath.Abs(opts.StateFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("resolving state file path: %w", err)
+		}
+		state, err := tofu.ShowStateFile(ctx, absStateFile)
+		if err == nil {
+			return state, nil
+		}
+		if strings.Contains(err.Error(), "Failed to load plugin schemas") &&
+			strings.Contains(err.Error(), "while loading schemas for plugin components") {
+			fmt.Fprintln(os.Stderr, "Error reading state file with OpenTofu. Rewriting provider references.")
+			return loadStateFileWithRewrite(ctx, tofu, absStateFile)
+		}
+		return nil, fmt.Errorf("tofu show on state file failed: %w", err)
 	}
 
 	workspace := opts.Workspace
