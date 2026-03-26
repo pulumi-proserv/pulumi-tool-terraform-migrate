@@ -74,6 +74,7 @@ func init() {
 
 type registryPackage struct {
 	Name         string   `json:"name"`
+	Publisher    string   `json:"publisher"`
 	PackageTypes []string `json:"packageTypes"`
 	Source       string   `json:"source"`
 }
@@ -178,7 +179,10 @@ func compareProviders(versionMapPath, registryURL string, dryRun bool) error {
 }
 
 func fetchBridgedProvidersFromRegistry(registryURL string) ([]string, error) {
-	var allProviders []string
+	// A provider name may appear multiple times in the registry (e.g. published by
+	// both "pulumi" and a third party). We only include providers that have at least
+	// one entry published by Pulumi.
+	pulumiPublished := make(map[string]bool)
 	url := registryURL + "?limit=500"
 
 	for {
@@ -209,8 +213,8 @@ func fetchBridgedProvidersFromRegistry(registryURL string) ([]string, error) {
 		}
 
 		for _, pkg := range result.Packages {
-			if isBridged(pkg) {
-				allProviders = append(allProviders, pkg.Name)
+			if pkg.Source == "pulumi" && pkg.Publisher == "pulumi" && slices.Contains(pkg.PackageTypes, "bridged") {
+				pulumiPublished[pkg.Name] = true
 			}
 		}
 
@@ -220,11 +224,10 @@ func fetchBridgedProvidersFromRegistry(registryURL string) ([]string, error) {
 		url = registryURL + "?limit=500&continuationToken=" + result.ContinuationToken
 	}
 
-	return allProviders, nil
-}
-
-func isBridged(pkg registryPackage) bool {
-	// Only include statically bridged providers (source=pulumi), not
-	// dynamically bridged ones (source=opentofu) which use any-terraform-provider.
-	return pkg.Source == "pulumi" && slices.Contains(pkg.PackageTypes, "bridged")
+	providers := make([]string, 0, len(pulumiPublished))
+	for name := range pulumiPublished {
+		providers = append(providers, name)
+	}
+	sort.Strings(providers)
+	return providers, nil
 }

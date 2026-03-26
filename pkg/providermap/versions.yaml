@@ -1,6 +1,12 @@
 bridged:
     acme: []
     aiven:
+        - pulumi: v6.51.0
+          upstream: v4.53.0
+        - pulumi: v6.50.0
+          upstream: v4.52.0
+        - pulumi: v6.49.0
+          upstream: v4.51.0
         - pulumi: v6.48.0
           upstream: v4.50.0
         - pulumi: v6.47.0
@@ -389,6 +395,12 @@ bridged:
         - pulumi: v0.0.1
           error: no GitHub release
     alicloud:
+        - pulumi: v3.97.0
+          upstream: v1.273.0
+        - pulumi: v3.96.0
+          upstream: v1.272.1
+        - pulumi: v3.95.0
+          upstream: v1.271.0
         - pulumi: v3.94.0
           upstream: v1.270.0
         - pulumi: v3.93.0
@@ -743,8 +755,9 @@ bridged:
           error: no GitHub release
         - pulumi: v1.0.0
           error: no GitHub release
-    aquasec: []
     archive:
+        - pulumi: v0.3.7
+          upstream: v2.7.1
         - pulumi: v0.3.6
           upstream: v2.7.1
         - pulumi: v0.3.5
@@ -779,8 +792,11 @@ bridged:
           upstream: v2.4.0
         - pulumi: v0.0.1
           upstream: v2.4.0
-    argocd: []
     artifactory:
+        - pulumi: v8.10.3
+          upstream: v12.11.3
+        - pulumi: v8.10.2
+          upstream: v12.11.2
         - pulumi: v8.10.1
           upstream: v12.11.1
         - pulumi: v8.10.0
@@ -1059,8 +1075,11 @@ bridged:
           error: no GitHub release
         - pulumi: v0.1.0
           error: no GitHub release
-    astra: []
     auth0:
+        - pulumi: v3.38.0
+          error: 'failed to fetch v3.38.0: exit status 128'
+        - pulumi: v3.37.1
+          error: 'failed to fetch v3.37.1: exit status 128'
         - pulumi: v3.37.0
           upstream: v1.39.0
         - pulumi: v3.36.0
@@ -1271,8 +1290,21 @@ bridged:
           error: no GitHub release
         - pulumi: v1.0.0
           error: no GitHub release
-    aviatrix: []
     aws:
+        - pulumi: v7.23.0
+          upstream: v6.36.0
+        - pulumi: v7.22.0
+          upstream: v6.35.1
+        - pulumi: v7.21.0
+          upstream: v6.34.0
+        - pulumi: v7.20.0
+          upstream: v6.33.0
+        - pulumi: v7.19.0
+          upstream: v6.31.0
+        - pulumi: v7.18.0
+          upstream: v6.31.0
+        - pulumi: v7.17.0
+          upstream: v6.30.0
         - pulumi: v7.16.0
           upstream: v6.28.0
         - pulumi: v7.15.0
@@ -2187,9 +2219,11 @@ bridged:
           error: no GitHub release
         - pulumi: v0.8.1
           error: no GitHub release
-    awscontroltower: []
-    azapi: []
     azure:
+        - pulumi: v6.33.0
+          upstream: v4.61.0
+        - pulumi: v6.32.0
+          upstream: v4.58.0
         - pulumi: v6.31.0
           upstream: v4.57.0
         - pulumi: v6.30.0
@@ -2831,6 +2865,10 @@ bridged:
         - pulumi: v0.0.0
           error: no GitHub release
     azuread:
+        - pulumi: v6.9.0
+          upstream: v3.8.0
+        - pulumi: v6.8.1
+          upstream: v3.122.0
         - pulumi: v6.8.0
           upstream: v3.7.0
         - pulumi: v6.7.0
@@ -3076,6 +3114,10 @@ bridged:
         - pulumi: v0.18.0
           error: no GitHub release
     azuredevops:
+        - pulumi: v3.14.0
+          upstream: v1.15.0
+        - pulumi: v3.13.0
+          upstream: v1.14.0
         - pulumi: v3.12.0
           upstream: v1.13.0
         - pulumi: v3.11.0
@@ -3181,13 +3223,18 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     buildkite: []
-    bytepluscc: []
-    castai: []
     checkly: []
-    chronosphere: []
     cilium: []
     clickhouse: []
     cloudamqp:
+        - pulumi: v3.27.1
+          upstream: v1.43.1
+        - pulumi: v3.27.0
+          upstream: v1.43.0
+        - pulumi: v3.26.1
+          upstream: v1.42.1
+        - pulumi: v3.26.0
+          upstream: v1.42.0
         - pulumi: v3.25.1
           upstream: v1.41.1
         - pulumi: v3.25.0
@@ -3670,6 +3717,8 @@ bridged:
         - pulumi: v0.17.0
           error: no GitHub release
     cloudinit:
+        - pulumi: v1.4.16
+          upstream: v3.122.0
         - pulumi: v1.4.15
           upstream: v3.119.0
         - pulumi: v1.4.14
@@ -3752,8 +3801,30 @@ bridged:
         - pulumi: v0.0.1
           upstream: v2.0.20
     cockroach: []
-    confluent: []
+    confluent:
+        - pulumi: v0.2.2
+          error: no GitHub release
+        - pulumi: v0.2.1
+          error: no GitHub release
+        - pulumi: v0.2.0
+          error: no GitHub release
+        - pulumi: v0.1.2
+          error: no GitHub release
+        - pulumi: v0.1.1
+          error: no GitHub release
+        - pulumi: v0.1.0
+          error: no GitHub release
     confluentcloud:
+        - pulumi: v2.61.0
+          error: 'failed to fetch v2.61.0: exit status 128'
+        - pulumi: v2.60.0
+          error: 'failed to fetch v2.60.0: exit status 128'
+        - pulumi: v2.59.0
+          error: 'failed to fetch v2.59.0: exit status 128'
+        - pulumi: v2.58.0
+          error: 'failed to fetch v2.58.0: exit status 128'
+        - pulumi: v2.57.0
+          error: 'failed to fetch v2.57.0: exit status 128'
         - pulumi: v2.56.0
           error: 'failed to checkout v2.56.0: exit status 1'
         - pulumi: v2.55.0
@@ -4102,10 +4173,21 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     cpln: []
-    cratedb: []
-    crowdstrike: []
-    ctfd: []
     databricks:
+        - pulumi: v1.90.0
+          error: 'failed to fetch v1.90.0: exit status 128'
+        - pulumi: v1.89.0
+          error: 'failed to fetch v1.89.0: exit status 128'
+        - pulumi: v1.88.0
+          error: 'failed to fetch v1.88.0: exit status 128'
+        - pulumi: v1.87.0
+          error: 'failed to fetch v1.87.0: exit status 128'
+        - pulumi: v1.86.0
+          error: 'failed to fetch v1.86.0: exit status 128'
+        - pulumi: v1.85.0
+          error: 'failed to fetch v1.85.0: exit status 128'
+        - pulumi: v1.84.0
+          error: 'failed to fetch v1.84.0: exit status 128'
         - pulumi: v1.83.0
           upstream: v1.104.0
         - pulumi: v1.82.0
@@ -4335,6 +4417,12 @@ bridged:
         - pulumi: v0.4.0
           error: no GitHub release
     datadog:
+        - pulumi: v4.68.0
+          error: 'failed to fetch v4.68.0: exit status 128'
+        - pulumi: v4.67.0
+          error: 'failed to fetch v4.67.0: exit status 128'
+        - pulumi: v4.66.0
+          error: 'failed to fetch v4.66.0: exit status 128'
         - pulumi: v4.65.0
           upstream: v3.87.0
         - pulumi: v4.64.0
@@ -4593,6 +4681,10 @@ bridged:
           error: no GitHub release
     datarobot: []
     dbtcloud:
+        - pulumi: v1.6.1
+          error: 'failed to fetch v1.6.1: exit status 128'
+        - pulumi: v1.6.0
+          error: 'failed to fetch v1.6.0: exit status 128'
         - pulumi: v1.5.0
           upstream: v1.7.0
         - pulumi: v1.4.1
@@ -4681,8 +4773,21 @@ bridged:
           error: no GitHub release
         - pulumi: v0.1.0
           error: no GitHub release
-    descope: []
     digitalocean:
+        - pulumi: v4.63.0
+          upstream: v2.81.0
+        - pulumi: v4.62.0
+          upstream: v2.80.0
+        - pulumi: v4.61.0
+          upstream: v2.79.0
+        - pulumi: v4.60.0
+          upstream: v2.78.0
+        - pulumi: v4.59.0
+          upstream: v2.77.0
+        - pulumi: v4.58.0
+          upstream: v2.76.0
+        - pulumi: v4.57.0
+          upstream: v2.75.0
         - pulumi: v4.56.0
           upstream: v2.72.0
         - pulumi: v4.55.0
@@ -4960,6 +5065,8 @@ bridged:
         - pulumi: v0.18.0
           error: no GitHub release
     dnsimple:
+        - pulumi: v5.0.2
+          upstream: v3.123.0
         - pulumi: v5.0.1
           upstream: v2.0.1
         - pulumi: v5.0.0
@@ -5069,6 +5176,8 @@ bridged:
         - pulumi: v0.18.0
           error: no GitHub release
     docker:
+        - pulumi: v4.11.1
+          upstream: v3.123.0
         - pulumi: v4.11.0
           upstream: v3.9.0
         - pulumi: v4.10.0
@@ -5248,6 +5357,8 @@ bridged:
     doppler: []
     dynatrace: []
     ec:
+        - pulumi: v0.10.10
+          upstream: v3.122.0
         - pulumi: v0.10.9
           upstream: v0.12.4
         - pulumi: v0.10.8
@@ -5308,6 +5419,8 @@ bridged:
     eventstorecloud: []
     exoscale: []
     external:
+        - pulumi: v0.0.18
+          upstream: v2.3.5
         - pulumi: v0.0.17
           upstream: v2.3.5
         - pulumi: v0.0.16
@@ -5343,6 +5456,10 @@ bridged:
         - pulumi: v0.0.1
           upstream: v2.3.1
     f5bigip:
+        - pulumi: v3.20.1
+          upstream: v1.25.1
+        - pulumi: v3.20.0
+          upstream: v1.25.0
         - pulumi: v3.19.3
           upstream: v1.24.2
         - pulumi: v3.19.2
@@ -5512,6 +5629,10 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     fastly:
+        - pulumi: v11.4.1
+          upstream: v8.7.1
+        - pulumi: v11.4.0
+          upstream: v8.7.0
         - pulumi: v11.3.0
           upstream: v8.6.0
         - pulumi: v11.2.0
@@ -5721,11 +5842,18 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     flux: []
-    formal: []
-    fortios: []
     fusionauth: []
-    gandi: []
     gcp:
+        - pulumi: v9.16.0
+          error: 'failed to fetch v9.16.0: exit status 128'
+        - pulumi: v9.15.0
+          error: 'failed to fetch v9.15.0: exit status 128'
+        - pulumi: v9.14.0
+          error: 'failed to fetch v9.14.0: exit status 128'
+        - pulumi: v9.13.0
+          error: 'failed to fetch v9.13.0: exit status 128'
+        - pulumi: v9.12.0
+          error: 'failed to fetch v9.12.0: exit status 128'
         - pulumi: v9.11.0
           upstream: v7.17.0
         - pulumi: v9.10.0
@@ -6424,8 +6552,11 @@ bridged:
           error: no GitHub release
         - pulumi: v0.9.11
           error: no GitHub release
-    genesiscloud: []
     github:
+        - pulumi: v6.12.1
+          upstream: v6.11.1
+        - pulumi: v6.12.0
+          upstream: v6.11.0
         - pulumi: v6.11.0
           upstream: v6.10.2
         - pulumi: v6.10.1
@@ -6657,6 +6788,10 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     gitlab:
+        - pulumi: v9.10.0
+          upstream: v18.9.0
+        - pulumi: v9.9.0
+          upstream: v18.9.0
         - pulumi: v9.8.2
           upstream: v18.8.2
         - pulumi: v9.8.1
@@ -6864,6 +6999,18 @@ bridged:
     grafana: []
     harbor: []
     harness:
+        - pulumi: v0.11.7
+          error: 'failed to fetch v0.11.7: exit status 128'
+        - pulumi: v0.11.6
+          error: 'failed to fetch v0.11.6: exit status 128'
+        - pulumi: v0.11.5
+          error: 'failed to fetch v0.11.5: exit status 128'
+        - pulumi: v0.11.4
+          error: 'failed to fetch v0.11.4: exit status 128'
+        - pulumi: v0.11.3
+          error: 'failed to fetch v0.11.3: exit status 128'
+        - pulumi: v0.11.2
+          error: 'failed to fetch v0.11.2: exit status 128'
         - pulumi: v0.11.1
           error: 'failed to checkout v0.11.1: exit status 1'
         - pulumi: v0.11.0
@@ -6993,6 +7140,8 @@ bridged:
         - pulumi: v0.0.1
           error: no GitHub release
     hcloud:
+        - pulumi: v1.32.1
+          error: 'failed to fetch v1.32.1: exit status 128'
         - pulumi: v1.32.0
           upstream: v1.60.0
         - pulumi: v1.31.0
@@ -7142,6 +7291,8 @@ bridged:
     hcp: []
     heroku: []
     http:
+        - pulumi: v0.1.4
+          upstream: v3.5.0
         - pulumi: v0.1.3
           upstream: v3.5.0
         - pulumi: v0.1.2
@@ -7172,12 +7323,15 @@ bridged:
           upstream: v3.4.1
         - pulumi: v0.0.1
           error: no GitHub release
-    impart: []
     influxdb: []
-    influxdb3: []
     ionoscloud: []
-    iosxe: []
     ise:
+        - pulumi: v0.3.0
+          error: 'failed to fetch v0.3.0: exit status 128'
+        - pulumi: v0.2.11
+          error: 'failed to fetch v0.2.11: exit status 128'
+        - pulumi: v0.2.10
+          error: 'failed to fetch v0.2.10: exit status 128'
         - pulumi: v0.2.9
           upstream: v0.2.15
         - pulumi: v0.2.8
@@ -7227,6 +7381,8 @@ bridged:
         - pulumi: v0.1.0
           upstream: v0.2.1
     junipermist:
+        - pulumi: v0.8.0
+          error: 'failed to fetch v0.8.0: exit status 128'
         - pulumi: v0.7.3
           upstream: v0.6.4
         - pulumi: v0.7.2
@@ -7481,6 +7637,8 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     keycloak:
+        - pulumi: v6.10.0
+          upstream: v5.7.0
         - pulumi: v6.9.0
           upstream: v5.6.0
         - pulumi: v6.8.0
@@ -7608,6 +7766,8 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     kong:
+        - pulumi: v4.5.13
+          upstream: v3.122.0
         - pulumi: v4.5.12
           upstream: v3.119.0
         - pulumi: v4.5.11
@@ -7683,8 +7843,11 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     koyeb: []
-    launchdarkly: []
     linode:
+        - pulumi: v5.9.0
+          upstream: v3.10.0
+        - pulumi: v5.8.0
+          upstream: v3.9.0
         - pulumi: v5.7.0
           upstream: v3.8.0
         - pulumi: v5.6.0
@@ -8030,8 +8193,9 @@ bridged:
           error: no GitHub release
         - pulumi: v1.0.0
           error: no GitHub release
-    matchbox: []
     meraki:
+        - pulumi: v0.4.6
+          upstream: v3.122.0
         - pulumi: v0.4.5
           upstream: v3.119.0
         - pulumi: v0.4.4
@@ -8083,6 +8247,8 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     minio:
+        - pulumi: v0.16.8
+          upstream: v3.122.0
         - pulumi: v0.16.7
           upstream: v3.119.0
         - pulumi: v0.16.6
@@ -8154,6 +8320,12 @@ bridged:
         - pulumi: v0.0.1
           error: no GitHub release
     mongodbatlas:
+        - pulumi: v4.5.0
+          error: 'failed to fetch v4.5.0: exit status 128'
+        - pulumi: v4.4.0
+          error: 'failed to fetch v4.4.0: exit status 128'
+        - pulumi: v4.3.0
+          error: 'failed to fetch v4.3.0: exit status 128'
         - pulumi: v4.2.0
           upstream: v2.5.0
         - pulumi: v4.1.0
@@ -8358,6 +8530,8 @@ bridged:
           error: no GitHub release
     mssql: []
     mysql:
+        - pulumi: v3.2.14
+          error: 'failed to fetch v3.2.14: exit status 128'
         - pulumi: v3.2.13
           upstream: v3.119.0
         - pulumi: v3.2.12
@@ -8461,6 +8635,18 @@ bridged:
         - pulumi: v0.18.0
           error: no GitHub release
     newrelic:
+        - pulumi: v5.63.0
+          error: 'failed to fetch v5.63.0: exit status 128'
+        - pulumi: v5.62.0
+          error: 'failed to fetch v5.62.0: exit status 128'
+        - pulumi: v5.61.3
+          error: 'failed to fetch v5.61.3: exit status 128'
+        - pulumi: v5.61.2
+          error: 'failed to fetch v5.61.2: exit status 128'
+        - pulumi: v5.61.1
+          error: 'failed to fetch v5.61.1: exit status 128'
+        - pulumi: v5.61.0
+          error: 'failed to fetch v5.61.0: exit status 128'
         - pulumi: v5.60.0
           upstream: v3.79.0
         - pulumi: v5.59.0
@@ -8841,8 +9027,9 @@ bridged:
           error: no GitHub release
         - pulumi: v0.17.1
           error: no GitHub release
-    ngrok: []
     nomad:
+        - pulumi: v2.5.5
+          upstream: v3.122.0
         - pulumi: v2.5.4
           upstream: v2.5.2
         - pulumi: v2.5.3
@@ -8892,6 +9079,10 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     ns1:
+        - pulumi: v3.8.2
+          upstream: v2.8.2
+        - pulumi: v3.8.1
+          upstream: v2.8.1
         - pulumi: v3.8.0
           upstream: v2.8.0
         - pulumi: v3.7.3
@@ -9021,6 +9212,8 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     "null":
+        - pulumi: v0.0.15
+          error: 'failed to fetch v0.0.15: exit status 128'
         - pulumi: v0.0.14
           upstream: v3.2.4
         - pulumi: v0.0.13
@@ -9049,9 +9242,23 @@ bridged:
           upstream: v3.2.2
         - pulumi: v0.0.1
           error: 'failed to parse version from release notes: no upstream version found in commit message'
-    nutanix: []
-    nxos: []
     oci:
+        - pulumi: v4.4.0
+          error: 'failed to fetch v4.4.0: exit status 128'
+        - pulumi: v4.3.1
+          error: 'failed to fetch v4.3.1: exit status 128'
+        - pulumi: v4.3.0
+          error: 'failed to fetch v4.3.0: exit status 128'
+        - pulumi: v4.2.0
+          error: 'failed to fetch v4.2.0: exit status 128'
+        - pulumi: v4.1.0
+          error: 'failed to fetch v4.1.0: exit status 128'
+        - pulumi: v4.0.0
+          error: 'failed to fetch v4.0.0: exit status 128'
+        - pulumi: v3.18.0
+          error: 'failed to fetch v3.18.0: exit status 128'
+        - pulumi: v3.17.0
+          error: 'failed to fetch v3.17.0: exit status 128'
         - pulumi: v3.16.0
           upstream: v7.32.0
         - pulumi: v3.15.0
@@ -9289,6 +9496,10 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     okta:
+        - pulumi: v6.3.1
+          error: 'failed to fetch v6.3.1: exit status 128'
+        - pulumi: v6.3.0
+          error: 'failed to fetch v6.3.0: exit status 128'
         - pulumi: v6.2.3
           upstream: v6.5.5
         - pulumi: v6.2.2
@@ -9525,7 +9736,6 @@ bridged:
           error: no GitHub release
         - pulumi: v1.0.0
           error: no GitHub release
-    onepassword: []
     openstack:
         - pulumi: v5.4.1
           upstream: v3.120.0
@@ -9728,6 +9938,8 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     opsgenie:
+        - pulumi: v1.3.20
+          upstream: v3.122.0
         - pulumi: v1.3.19
           upstream: v3.119.0
         - pulumi: v1.3.18
@@ -9829,8 +10041,108 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     ovh: []
-    packet: []
+    packet:
+        - pulumi: v3.2.2
+          error: no GitHub release
+        - pulumi: v3.2.1
+          error: no GitHub release
+        - pulumi: v3.2.0
+          error: no GitHub release
+        - pulumi: v3.1.0
+          error: no GitHub release
+        - pulumi: v3.0.0
+          error: no GitHub release
+        - pulumi: v2.3.0
+          error: no GitHub release
+        - pulumi: v2.2.2
+          error: no GitHub release
+        - pulumi: v2.2.1
+          error: no GitHub release
+        - pulumi: v2.2.0
+          error: no GitHub release
+        - pulumi: v2.1.1
+          error: no GitHub release
+        - pulumi: v2.1.0
+          error: no GitHub release
+        - pulumi: v2.0.1
+          error: no GitHub release
+        - pulumi: v2.0.0
+          error: no GitHub release
+        - pulumi: v1.10.0
+          error: no GitHub release
+        - pulumi: v1.9.0
+          error: no GitHub release
+        - pulumi: v1.8.0
+          error: no GitHub release
+        - pulumi: v1.7.0
+          error: no GitHub release
+        - pulumi: v1.6.0
+          error: no GitHub release
+        - pulumi: v1.5.0
+          error: no GitHub release
+        - pulumi: v1.4.0
+          error: no GitHub release
+        - pulumi: v1.3.0
+          error: no GitHub release
+        - pulumi: v1.2.0
+          error: no GitHub release
+        - pulumi: v1.1.0
+          error: no GitHub release
+        - pulumi: v1.0.0
+          error: no GitHub release
+        - pulumi: v0.4.13
+          error: no GitHub release
+        - pulumi: v0.4.12
+          error: no GitHub release
+        - pulumi: v0.4.11
+          error: no GitHub release
+        - pulumi: v0.4.10
+          error: no GitHub release
+        - pulumi: v0.4.9
+          error: no GitHub release
+        - pulumi: v0.4.8
+          error: no GitHub release
+        - pulumi: v0.4.7
+          error: no GitHub release
+        - pulumi: v0.4.6
+          error: no GitHub release
+        - pulumi: v0.4.5
+          error: no GitHub release
+        - pulumi: v0.4.4
+          error: no GitHub release
+        - pulumi: v0.4.3
+          error: no GitHub release
+        - pulumi: v0.4.2
+          error: no GitHub release
+        - pulumi: v0.4.1
+          error: no GitHub release
+        - pulumi: v0.4.0
+          error: no GitHub release
+        - pulumi: v0.3.2
+          error: no GitHub release
+        - pulumi: v0.3.1
+          error: no GitHub release
+        - pulumi: v0.3.0
+          error: no GitHub release
+        - pulumi: v0.2.0
+          error: no GitHub release
+        - pulumi: v0.1.0
+          error: no GitHub release
     pagerduty:
+        - pulumi: v4.31.1
+          upstream: v3.32.1
+        - pulumi: v4.31.0
+          upstream: v3.32.0
+        - pulumi: v4.30.4
+          upstream: v3.31.4
+        - pulumi: v4.30.3
+          upstream: v3.31.3
+        - pulumi: v4.30.2
+          upstream: v3.31.2
+        - pulumi: v4.30.1
+          upstream: v3.31.1
+        - pulumi: v4.30.0
+          upstream: v3.31.0
         - pulumi: v4.29.9
           upstream: v3.30.9
         - pulumi: v4.29.8
@@ -10091,7 +10403,6 @@ bridged:
           error: no GitHub release
         - pulumi: v1.0.0
           error: no GitHub release
-    pgedge: []
     port: []
     postgresql:
         - pulumi: v3.16.2
@@ -10230,10 +10541,10 @@ bridged:
           error: no GitHub release
         - pulumi: v0.18.0
           error: no GitHub release
-    prodvana: []
     proxmoxve: []
-    qovery: []
     rabbitmq:
+        - pulumi: v3.4.2
+          upstream: v1.10.1
         - pulumi: v3.4.1
           upstream: v1.10.1
         - pulumi: v3.4.0
@@ -10309,6 +10620,8 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     rancher2:
+        - pulumi: v11.0.1
+          upstream: v3.122.0
         - pulumi: v11.0.0
           upstream: v13.1.4
         - pulumi: v10.3.0
@@ -10645,9 +10958,12 @@ bridged:
         - pulumi: v0.0.1
           error: no GitHub release
     rediscloud: []
-    rootly: []
     scaleway: []
     scm:
+        - pulumi: v1.0.5
+          error: 'failed to fetch v1.0.5: exit status 128'
+        - pulumi: v1.0.4
+          error: 'failed to fetch v1.0.4: exit status 128'
         - pulumi: v1.0.3
           upstream: v1.0.7
         - pulumi: v1.0.2
@@ -10692,6 +11008,8 @@ bridged:
           upstream: v0.8.0
     sdm: []
     sdwan:
+        - pulumi: v0.7.0
+          upstream: v0.10.0
         - pulumi: v0.6.0
           upstream: v0.9.0
         - pulumi: v0.5.2
@@ -10734,6 +11052,12 @@ bridged:
           error: no GitHub release
     sentry: []
     signalfx:
+        - pulumi: v7.24.0
+          error: 'failed to fetch v7.24.0: exit status 128'
+        - pulumi: v7.23.0
+          error: 'failed to fetch v7.23.0: exit status 128'
+        - pulumi: v7.22.0
+          error: 'failed to fetch v7.22.0: exit status 128'
         - pulumi: v7.21.0
           upstream: v9.24.0
         - pulumi: v7.20.0
@@ -10943,6 +11267,8 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     slack:
+        - pulumi: v0.4.16
+          upstream: v3.122.0
         - pulumi: v0.4.15
           upstream: v3.119.0
         - pulumi: v0.4.14
@@ -10988,6 +11314,12 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     snowflake:
+        - pulumi: v2.13.1
+          upstream: v2.14.1
+        - pulumi: v2.13.0
+          upstream: v2.14.0
+        - pulumi: v2.12.0
+          upstream: v2.13.0
         - pulumi: v2.11.0
           upstream: v2.12.0
         - pulumi: v2.10.0
@@ -11226,8 +11558,13 @@ bridged:
           error: no GitHub release
         - pulumi: v0.1.0
           error: no GitHub release
-    splight: []
     splunk:
+        - pulumi: v1.3.0
+          error: 'failed to fetch v1.3.0: exit status 128'
+        - pulumi: v1.2.26
+          error: 'failed to fetch v1.2.26: exit status 128'
+        - pulumi: v1.2.25
+          error: 'failed to fetch v1.2.25: exit status 128'
         - pulumi: v1.2.24
           upstream: v1.4.34
         - pulumi: v1.2.23
@@ -11311,6 +11648,8 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     spotinst:
+        - pulumi: v3.128.4
+          error: 'failed to fetch v3.128.4: exit status 128'
         - pulumi: v3.128.3
           upstream: v1.232.4
         - pulumi: v3.128.2
@@ -11713,12 +12052,112 @@ bridged:
           error: no GitHub release
         - pulumi: v1.0.0
           error: no GitHub release
-    stackit: []
-    statsig: []
-    statuscake: []
-    sumologic: []
-    symbiosis: []
+    sumologic:
+        - pulumi: v1.0.11
+          upstream: v3.0.12
+        - pulumi: v1.0.10
+          upstream: v3.0.11
+        - pulumi: v1.0.9
+          upstream: v3.0.10
+        - pulumi: v1.0.8
+          upstream: v3.0.9
+        - pulumi: v1.0.7
+          upstream: v3.0.8
+        - pulumi: v1.0.6
+          upstream: v3.0.6
+        - pulumi: v1.0.5
+          upstream: v3.0.5
+        - pulumi: v1.0.4
+          upstream: v3.0.4
+        - pulumi: v1.0.3
+          upstream: v3.0.3
+        - pulumi: v1.0.2
+          upstream: v3.0.2
+        - pulumi: v1.0.1
+          upstream: v3.0.1
+        - pulumi: v1.0.0
+          upstream: v3.0.0
+        - pulumi: v0.23.7
+          upstream: v2.31.5
+        - pulumi: v0.23.6
+          upstream: v2.31.5
+        - pulumi: v0.23.5
+          upstream: v2.31.5
+        - pulumi: v0.23.4
+          upstream: v2.31.4
+        - pulumi: v0.23.3
+          upstream: v2.31.3
+        - pulumi: v0.23.2
+          upstream: v2.31.2
+        - pulumi: v0.23.1
+          upstream: v2.31.1
+        - pulumi: v0.23.0
+          upstream: v2.31.0
+        - pulumi: v0.22.1
+          upstream: v2.30.1
+        - pulumi: v0.22.0
+          upstream: v2.30.0
+        - pulumi: v0.21.0
+          upstream: v2.29.0
+        - pulumi: v0.20.3
+          upstream: v2.28.3
+        - pulumi: v0.20.2
+          upstream: v2.28.2
+        - pulumi: v0.20.1
+          upstream: v2.28.1
+        - pulumi: v0.20.0
+          upstream: v2.28.0
+        - pulumi: v0.19.0
+          upstream: v2.27.0
+        - pulumi: v0.18.0
+          upstream: v2.26.0
+        - pulumi: v0.17.0
+          upstream: v2.25.0
+        - pulumi: v0.16.0
+          upstream: v2.24.0
+        - pulumi: v0.15.0
+          upstream: v2.24.0
+        - pulumi: v0.14.0
+          upstream: v2.23.0
+        - pulumi: v0.13.1
+          upstream: v2.22.1
+        - pulumi: v0.13.0
+          upstream: v2.22.0
+        - pulumi: v0.12.0
+          upstream: v2.21.0
+        - pulumi: v0.11.0
+          upstream: v2.20.0
+        - pulumi: v0.10.0
+          upstream: v2.19.0
+        - pulumi: v0.9.0
+          error: no GitHub release
+        - pulumi: v0.8.0
+          error: no GitHub release
+        - pulumi: v0.7.1
+          error: no GitHub release
+        - pulumi: v0.7.0
+          error: no GitHub release
+        - pulumi: v0.6.0
+          upstream: v2.14.0
+        - pulumi: v0.5.0
+          error: no GitHub release
+        - pulumi: v0.4.1
+          error: no GitHub release
+        - pulumi: v0.4.0
+          error: no GitHub release
+        - pulumi: v0.3.0
+          error: no GitHub release
+        - pulumi: v0.2.0
+          error: no GitHub release
+        - pulumi: v0.1.0
+          error: no GitHub release
     tailscale:
+        - pulumi: v0.27.0
+          upstream: v0.28.0
+        - pulumi: v0.26.0
+          upstream: v0.27.0
+        - pulumi: v0.25.0
+          upstream: v0.26.0
         - pulumi: v0.24.0
           upstream: v0.25.0
         - pulumi: v0.23.0
@@ -11942,9 +12381,10 @@ bridged:
           error: no GitHub release
     twingate: []
     unifi: []
-    upcloud: []
     upstash: []
     vault:
+        - pulumi: v7.7.0
+          upstream: v5.7.0
         - pulumi: v7.6.0
           upstream: v5.6.0
         - pulumi: v7.5.0
@@ -12128,6 +12568,8 @@ bridged:
         - pulumi: v1.0.0
           error: no GitHub release
     venafi:
+        - pulumi: v1.12.3
+          upstream: v0.23.1
         - pulumi: v1.12.2
           upstream: v0.23.1
         - pulumi: v1.12.1
@@ -12209,9 +12651,11 @@ bridged:
         - pulumi: v0.1.0
           error: no GitHub release
     vercel: []
-    volcengine: []
-    volcenginecc: []
     vsphere:
+        - pulumi: v4.16.4
+          upstream: v2.15.1
+        - pulumi: v4.16.3
+          upstream: v2.15.0
         - pulumi: v4.16.2
           upstream: v2.15.0
         - pulumi: v4.16.1
@@ -12417,8 +12861,121 @@ bridged:
         - pulumi: v0.16.0
           error: no GitHub release
     vultr: []
-    wavefront: []
-    xenorchestra: []
-    yandex: []
+    wavefront:
+        - pulumi: v3.1.12
+          upstream: v3.119.0
+        - pulumi: v3.1.11
+          upstream: v3.115.0
+        - pulumi: v3.1.10
+          upstream: v3.111.0
+        - pulumi: v3.1.9
+          upstream: v3.107.0
+        - pulumi: v3.1.8
+          upstream: v3.104.0
+        - pulumi: v3.1.7
+          upstream: v3.99.0
+        - pulumi: v3.1.6
+          error: no GitHub release
+        - pulumi: v3.1.5
+          error: no GitHub release
+        - pulumi: v3.1.4
+          upstream: v3.91.0
+        - pulumi: v3.1.3
+          upstream: v3.87.0
+        - pulumi: v3.1.2
+          upstream: v3.82.0
+        - pulumi: v3.1.1
+          upstream: v3.77.0
+        - pulumi: v3.1.0
+          upstream: v5.1.0
+        - pulumi: v3.0.4
+          upstream: v3.63.2
+        - pulumi: v3.0.3
+          upstream: v5.0.5
+        - pulumi: v3.0.2
+          upstream: v5.0.4
+        - pulumi: v3.0.1
+          upstream: v5.0.3
+        - pulumi: v3.0.0
+          upstream: v5.0.1
+        - pulumi: v2.1.0
+          upstream: v4.2.0
+        - pulumi: v2.0.0
+          upstream: v4.1.0
+        - pulumi: v1.4.0
+          upstream: v3.6.0
+        - pulumi: v1.3.0
+          upstream: v3.5.0
+        - pulumi: v1.2.0
+          upstream: v3.4.0
+        - pulumi: v1.1.1
+          upstream: v3.0.2
+        - pulumi: v1.1.0
+          error: no GitHub release
+        - pulumi: v1.0.0
+          error: no GitHub release
+        - pulumi: v0.9.0
+          error: no GitHub release
+        - pulumi: v0.8.1
+          error: no GitHub release
+        - pulumi: v0.8.0
+          error: no GitHub release
+        - pulumi: v0.7.2
+          error: no GitHub release
+        - pulumi: v0.7.1
+          error: no GitHub release
+        - pulumi: v0.7.0
+          error: no GitHub release
+        - pulumi: v0.6.0
+          error: no GitHub release
+        - pulumi: v0.5.5
+          error: no GitHub release
+        - pulumi: v0.5.4
+          error: no GitHub release
+        - pulumi: v0.5.3
+          error: no GitHub release
+        - pulumi: v0.5.2
+          error: no GitHub release
+        - pulumi: v0.5.1
+          error: no GitHub release
+        - pulumi: v0.4.0
+          error: no GitHub release
+        - pulumi: v0.3.0
+          error: no GitHub release
+        - pulumi: v0.2.1
+          error: no GitHub release
+        - pulumi: v0.2.0
+          error: no GitHub release
+        - pulumi: v0.1.0
+          error: no GitHub release
+        - pulumi: v0.0.1
+          error: no GitHub release
+    yandex:
+        - pulumi: v0.13.0
+          upstream: v0.71.0
+        - pulumi: v0.12.0
+          upstream: v0.71.0
+        - pulumi: v0.11.0
+          upstream: v3.16.0
+        - pulumi: v0.10.0
+          error: no GitHub release
+        - pulumi: v0.9.0
+          error: no GitHub release
+        - pulumi: v0.8.0
+          error: no GitHub release
+        - pulumi: v0.7.0
+          error: no GitHub release
+        - pulumi: v0.6.0
+          error: no GitHub release
+        - pulumi: v0.5.0
+          error: no GitHub release
+        - pulumi: v0.4.0
+          error: no GitHub release
+        - pulumi: v0.3.0
+          error: no GitHub release
+        - pulumi: v0.2.0
+          error: no GitHub release
+        - pulumi: v0.1.0
+          error: no GitHub release
     zitadel: []
     zpa: []
