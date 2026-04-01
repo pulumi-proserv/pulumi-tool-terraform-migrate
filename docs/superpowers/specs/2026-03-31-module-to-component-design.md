@@ -13,6 +13,64 @@ This is a problem because:
 2. **State fidelity**: The migrated Pulumi state should structurally mirror the Terraform module hierarchy.
 3. **Operational clarity**: Users need to see which resources came from which module via parent-child relationships in the Pulumi resource tree.
 
+## Background Research
+
+### Terraform Module Inputs and Outputs
+
+Terraform modules have inputs (`variable` blocks) and outputs (`output` blocks), analogous to Pulumi component constructor args and public properties:
+
+```hcl
+# modules/vpc/variables.tf — module inputs
+variable "cidr" { type = string }
+variable "name" { type = string }
+
+# modules/vpc/main.tf — child resources consume inputs
+resource "aws_vpc" "this" {
+  cidr_block = var.cidr
+  tags       = { Name = var.name }
+}
+
+# modules/vpc/outputs.tf — module outputs
+output "vpc_id" { value = aws_vpc.this.id }
+```
+
+Callers pass inputs at the call site:
+```hcl
+module "vpc" {
+  source = "./modules/vpc"
+  cidr   = "10.0.0.0/16"
+  name   = "production"
+}
+```
+
+**Critical finding: Module inputs and outputs are NOT in Terraform state.** The `tfjson.StateModule` struct only contains `Resources`, `ChildModules`, and `Address`. Module variable values and output values are resolved at plan/apply time and baked into child resource attribute values. To recover them, we must parse the HCL source files.
+
+### What Pulumi Stores in Component Resource State
+
+Research into the Pulumi engine (`pulumi/pulumi`) revealed:
+
+1. **Inputs ARE stored** — Whatever `args` are passed to the component constructor gets written to the `inputs` field of the resource state via the `RegisterResource` RPC.
+
+2. **Outputs ARE stored** — Set by `registerOutputs()`. The Node.js SDK calls it automatically with `{}` if not called explicitly.
+
+3. **Diff is `DeepEquals` on inputs only** — On `pulumi preview`, the engine compares old inputs vs new inputs using a simple `DeepEquals` (no provider involvement for components). If they don't match, a diff/update is shown. **Outputs are NOT compared during diff.**
+
+4. **No provider involvement** — Components have no provider, so no `Check`, `Create`, `Diff`, or `Update` RPCs. The engine just stores what the program sends.
+
+This means:
+- For a **clean `pulumi preview`**, the translated state's component `inputs` must exactly match what the generated code will pass to the constructor.
+- Component `outputs` don't cause diffs but should be populated for state fidelity.
+- The chain is: TF state → translate (with component inputs/outputs) → Pulumi state → generate matching component code → `pulumi preview` = 0 diffs.
+
+### Why HCL Parsing is Required
+
+Since module inputs/outputs aren't in TF state, and we need them to populate component state, we must parse the module HCL files to:
+1. **Extract the component interface** — `variable` blocks define constructor args, `output` blocks define public properties.
+2. **Resolve input values** — Parse the call site expressions and evaluate them against TF state + tfvars to get concrete values.
+3. **Resolve output values** — Evaluate output expressions (e.g., `aws_vpc.this.id`) against child resource state.
+
+Input values at call sites can be complex HCL expressions (`var.cidr`, `module.other.output`, `join(...)`, conditionals, etc.), requiring a full HCL expression evaluator with access to the Terraform function library.
+
 ## Design
 
 ### Phase 1: Component Resource Structure
@@ -188,7 +246,7 @@ Populate component resource inputs and outputs so that generated Pulumi componen
 
 #### Why This Matters
 
-Pulumi component resources store inputs in state. On preview, the engine does a `DeepEquals` comparison of old inputs vs new inputs. If the translated state's component inputs don't match what the generated code passes to the constructor, preview shows a diff. Outputs are set via `registerOutputs()` and are NOT compared during diff, but populating them correctly improves state fidelity.
+As documented in the Background Research section: component inputs must match exactly between translated state and generated code for a clean preview (diff is `DeepEquals` on inputs). Outputs don't cause diffs but should be populated for fidelity. Module inputs/outputs are not in TF state, so HCL parsing is required.
 
 #### HCL Source Resolution
 
