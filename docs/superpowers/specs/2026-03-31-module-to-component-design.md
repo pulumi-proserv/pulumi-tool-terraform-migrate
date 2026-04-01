@@ -1,7 +1,7 @@
 # Terraform Modules to Pulumi Component Resources
 
 **Date**: 2026-03-31
-**Status**: Draft
+**Status**: Phase 1 implemented (PRs 1-4 on `feat/mc-*` branches), Phase 2 not started
 
 ## Problem
 

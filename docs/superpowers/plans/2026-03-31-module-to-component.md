@@ -10,7 +10,7 @@
 
 **Default behavior:** `enableComponents` defaults to `true`. Existing tests that use module test fixtures will be updated to expect component resources. The `--no-module-components` flag opts out.
 
-**Spec:** `docs/superpowers/specs/2026-03-31-module-to-component-design.md`
+**Spec:** `docs/superpowers/specs/2026-03-31-module-to-component-design.md` (on branch `feat/module-to-component-design`)
 
 **TDD order for every task:** Create test fixtures → write failing tests → implement code → verify tests pass → commit.
 
@@ -18,31 +18,38 @@
 
 ## PR Strategy
 
-10 stacked PRs, each small and independently reviewable:
+10 stacked PRs, each small and independently reviewable.
 
 ### Phase 1: Component Resource Structure (PRs 1-5)
 
-| PR | Branch | Base | Scope |
-|----|--------|------|-------|
-| 1 | `feat/mc-01-migration-schema` | `main` | Migration file schema + type token derivation + module address parsing |
-| 2 | `feat/mc-02-component-tree` | PR 1 | Component tree builder + collision detection |
-| 3 | `feat/mc-03-pulumi-state` | PR 2 | `PulumiState` struct changes + component insertion into deployment |
-| 4 | `feat/mc-04-pipeline-integration` | PR 3 | Integration into `convertState` pipeline + CLI flags + existing test updates |
-| 5 | `feat/mc-05-integration-tests` | PR 4 | Test fixtures from real deployments + end-to-end integration tests |
+| PR | Branch | Base | Scope | Status |
+|----|--------|------|-------|--------|
+| 1 | `feat/mc-01-migration-schema` | `main` | Migration file schema + type token derivation + module address parsing | **DONE** |
+| 2 | `feat/mc-02-component-tree` | PR 1 | Component tree builder + collision detection | **DONE** |
+| 3 | `feat/mc-03-pulumi-state` | PR 2 | `PulumiState` struct changes + component insertion into deployment | **DONE** |
+| 4 | `feat/mc-04-pipeline-integration` | PR 3 | Integration into `convertState` pipeline + CLI flags + existing test updates | **DONE** |
+| 5 | `feat/mc-05-integration-tests` | PR 4 | Test fixtures from real deployments + end-to-end integration tests | TODO |
+
+**Implementation notes (PRs 1-4):**
+- `buildComponentTree` returns `([]*componentNode, error)` (collision detection integrated from the start).
+- `PulumiResource.Parent` field was added in PR 2 (needed by `toComponents`), not PR 3 as originally planned.
+- `PulumiNameFromTerraformAddress` now takes a `useShortName bool` third parameter. All existing call sites pass `false`.
+- `TranslateAndWriteState`, `TranslateState`, and `convertState` all accept `enableComponents bool` and `typeOverrides map[string]string` parameters.
+- Unit tests for `convertState` pass `enableComponents: false` to preserve existing behavior. The `translateStateFromJson` test helper passes `enableComponents: true`.
 
 ### Phase 2: HCL Parsing & Input/Output Population (PRs 6-10)
 
-| PR | Branch | Base | Scope |
-|----|--------|------|-------|
-| 6 | `feat/mc-06-hcl-parser` | PR 5 | HCL module parser (variables + outputs) |
-| 7 | `feat/mc-07-callsite-tfvars` | PR 6 | HCL call site parser + tfvars loader |
-| 8 | `feat/mc-08-evaluator` | PR 7 | Expression evaluator + function library via `pulumi/opentofu` |
-| 9 | `feat/mc-09-state-population` | PR 8 | cty-to-Pulumi conversion + component state population integration |
-| 10 | `feat/mc-10-discovery-acceptance` | PR 9 | Auto-discovery of local module sources + clean preview acceptance test |
+| PR | Branch | Base | Scope | Status |
+|----|--------|------|-------|--------|
+| 6 | `feat/mc-06-hcl-parser` | PR 5 | HCL module parser (variables + outputs) | TODO |
+| 7 | `feat/mc-07-callsite-tfvars` | PR 6 | HCL call site parser + tfvars loader | TODO |
+| 8 | `feat/mc-08-evaluator` | PR 7 | Expression evaluator + function library via `pulumi/opentofu` | TODO |
+| 9 | `feat/mc-09-state-population` | PR 8 | cty-to-Pulumi conversion + component state population integration | TODO |
+| 10 | `feat/mc-10-discovery-acceptance` | PR 9 | Auto-discovery of local module sources + clean preview acceptance test | TODO |
 
 ---
 
-## PR 1: Migration File Schema + Pure Functions
+## PR 1: Migration File Schema + Pure Functions ✅
 
 ### File Map
 
@@ -53,7 +60,7 @@
 | Create | `pkg/module_tree.go` | Type token derivation, name sanitization, module address parsing |
 | Create | `pkg/module_tree_test.go` | Tests for pure functions |
 
-### Task 1: Add `Module` struct to migration file format
+### Task 1: Add `Module` struct to migration file format ✅
 
 **Files:** Modify `pkg/migration/migration.go:56-80`
 
@@ -162,7 +169,7 @@ git commit -m "feat: add Module struct and Modules field to migration file forma
 
 ---
 
-### Task 2: Type token derivation and name sanitization
+### Task 2: Type token derivation and name sanitization ✅
 
 **Files:** Create `pkg/module_tree.go`, `pkg/module_tree_test.go`
 
@@ -305,7 +312,7 @@ EOF
 
 ---
 
-## PR 2: Component Tree Builder
+## PR 2: Component Tree Builder ✅
 
 ### File Map
 
@@ -314,7 +321,7 @@ EOF
 | Modify | `pkg/module_tree.go` | `componentNode` struct, `buildComponentTree`, collision detection |
 | Modify | `pkg/module_tree_test.go` | Tree builder tests |
 
-### Task 3: Build component tree with collision detection
+### Task 3: Build component tree with collision detection ✅
 
 **Files:** Modify `pkg/module_tree.go`, `pkg/module_tree_test.go`
 
@@ -474,7 +481,7 @@ gh pr create --base feat/mc-01-migration-schema \
 
 ---
 
-## PR 3: PulumiState Struct Changes + Component Insertion
+## PR 3: PulumiState Struct Changes + Component Insertion ✅
 
 ### File Map
 
@@ -483,7 +490,7 @@ gh pr create --base feat/mc-01-migration-schema \
 | Modify | `pkg/pulumi_state.go:31-61,147-211` | `Parent` field, `Components` field, `makeUrnWithParent`, component insertion |
 | Modify | `pkg/pulumi_state_test.go` | Tests for component insertion |
 
-### Task 4: Add `Parent` field, `Components`, and component insertion logic
+### Task 4: Add `Parent` field, `Components`, and component insertion logic ✅
 
 **Files:** Modify `pkg/pulumi_state.go`, `pkg/pulumi_state_test.go`
 
@@ -781,7 +788,7 @@ gh pr create --base feat/mc-02-component-tree \
 
 ---
 
-## PR 4: Pipeline Integration + CLI Flags
+## PR 4: Pipeline Integration + CLI Flags ✅
 
 ### File Map
 
@@ -791,7 +798,7 @@ gh pr create --base feat/mc-02-component-tree \
 | Modify | `pkg/state_adapter_test.go` | Update existing module tests, add backward compat test |
 | Modify | `cmd/stack.go` | Add `--module-type-map` and `--no-module-components` flags |
 
-### Task 5: Integrate module tree into `convertState` and update naming
+### Task 5: Integrate module tree into `convertState` and update naming ✅
 
 **Files:** Modify `pkg/state_adapter.go`, `pkg/state_adapter_test.go`
 
@@ -909,7 +916,7 @@ git add pkg/state_adapter.go pkg/state_adapter_test.go
 git commit -m "feat: integrate module tree into convertState pipeline"
 ```
 
-### Task 6: Add CLI flags
+### Task 6: Add CLI flags ✅
 
 **Files:** Modify `cmd/stack.go`
 
