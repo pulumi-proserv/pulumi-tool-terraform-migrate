@@ -28,6 +28,7 @@ func TestLoadMigrationWithModules(t *testing.T) {
 	vpc := mf.Migration.Stacks[0].Modules[0]
 	require.Equal(t, "module.vpc", vpc.TFModule)
 	require.Equal(t, "myproject:index:VpcComponent", vpc.PulumiType)
+	require.Equal(t, "./schemas/vpc-component.json", vpc.SchemaPath)
 	require.Empty(t, vpc.HCLSource)
 
 	subnets := mf.Migration.Stacks[0].Modules[1]

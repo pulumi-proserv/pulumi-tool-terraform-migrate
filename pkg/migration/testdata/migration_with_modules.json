@@ -8,7 +8,8 @@
       "modules": [
         {
           "tf-module": "module.vpc",
-          "pulumi-type": "myproject:index:VpcComponent"
+          "pulumi-type": "myproject:index:VpcComponent",
+          "schema-path": "./schemas/vpc-component.json"
         },
         {
           "tf-module": "module.vpc.module.subnets",
