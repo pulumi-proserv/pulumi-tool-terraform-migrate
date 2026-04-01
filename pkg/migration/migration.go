@@ -93,6 +93,10 @@ type Module struct {
 
 	// Path to HCL source files for this module (Phase 2).
 	HCLSource string `json:"hcl-source,omitempty"`
+
+	// Path to Pulumi package schema JSON for component interface validation.
+	// When provided, the schema is source of truth — parsed HCL interface is validated against it.
+	SchemaPath string `json:"schema-path,omitempty"`
 }
 
 // LoadMigration reads and parses a migration.json file
