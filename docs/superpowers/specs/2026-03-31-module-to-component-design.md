@@ -215,6 +215,66 @@ Repeatable flag for multiple mappings. CLI flags take precedence over migration 
 - For indexed/keyed modules, the mapping applies to all instances — map `module.vpc` and it matches `module.vpc[0]`, `module.vpc["us-east-1"]`, etc.
 - **Precedence chain**: CLI flag > migration file > auto-derived default.
 
+### Component Schema Validation
+
+#### Default Behavior (No Schema)
+
+When no schema is provided, component inputs and outputs are derived from HCL module `variable`/`output` blocks and TF state. This is the existing Phase 2 path and remains the default.
+
+#### Schema-Validated Behavior
+
+When a Pulumi package schema JSON is provided for a module, the schema is the **source of truth** for the component interface. The tool still parses HCL/state to get **values**, but validates that the parsed inputs/outputs match the schema's **shape**. If they don't match, the tool fails with a descriptive error.
+
+This supports two key scenarios:
+- **Existing Pulumi components** — Target Pulumi programs may already have component classes defined. The user provides the schema (e.g., via `pulumi package get-schema`) and the tool validates compatibility.
+- **OSS/third-party TF modules** — Public modules (e.g., `terraform-aws-modules/vpc/aws`) can be wrapped via a `terraform-module` plugin or mapped to a custom Pulumi component. Both produce the same artifact: a Pulumi package schema JSON.
+
+Schema uses the standard Pulumi package schema JSON format (`pulumi package get-schema` output). Loaded via `github.com/pulumi/pulumi/pkg/v3/codegen/schema.ImportSpec()` — already available in `go.mod` (v3.222.0):
+
+```go
+import "github.com/pulumi/pulumi/pkg/v3/codegen/schema"
+
+var spec schema.PackageSpec
+json.Unmarshal(data, &spec)
+pkg, err := schema.ImportSpec(spec, nil, schema.ValidationOptions{})
+
+resource, ok := pkg.GetResource("myproject:index:VpcComponent")
+// resource.IsComponent == true
+// resource.InputProperties — []*Property (inputs)
+// resource.Properties — []*Property (outputs)
+// property.Name, property.Type.String(), property.IsRequired()
+```
+
+No new dependencies needed.
+
+#### Migration File Configuration
+
+Add `schema-path` to the module entry:
+
+```json
+{
+  "tf-module": "module.vpc",
+  "pulumi-type": "myproject:index:VpcComponent",
+  "schema-path": "./schemas/vpc-component.json"
+}
+```
+
+#### CLI Flag
+
+`--module-schema module.vpc=./schemas/vpc-component.json` (repeatable)
+
+**Precedence:** CLI flag > migration file > none (HCL-derived default)
+
+#### Validation Rules
+
+- Schema is **optional** — default is HCL-derived interface
+- When provided, schema is **source of truth** for the component interface (types, required fields)
+- Tool still parses HCL/state to get **values** — schema validates the **shape**
+- Mismatch = error (not silent override). Examples:
+  - Parsed HCL missing an input the schema requires → error
+  - Parsed HCL has output not in schema → error
+- How the schema was produced is the agent's concern — the tool only consumes it
+
 ### State Translation Pipeline Changes
 
 #### Current Flow
@@ -250,6 +310,17 @@ Repeatable flag for multiple mappings. CLI flags take precedence over migration 
 #### Goal
 
 Populate component resource inputs and outputs so that generated Pulumi component code produces state that matches the translated state exactly, yielding a clean `pulumi preview`.
+
+#### OSS Module Strategy
+
+Terraform programs commonly use public/third-party modules (e.g., `terraform-aws-modules/vpc/aws`). The tool supports these via two strategies — chosen by the agent/user, not the tool:
+
+1. **terraform-module plugin** — The agent wraps the TF module as a Pulumi component using the `terraform-module` provider plugin, then generates a schema via `pulumi package get-schema`.
+2. **Custom/simplified component** — The agent maps the module to an existing Pulumi package or generates a new component class, producing a schema from source code or HCL analysis.
+
+Both strategies produce the same artifact: a **Pulumi package schema JSON** passed to the tool for validation. The tool does not choose between strategies — it consumes the schema. OSS module strategy is agent-driven.
+
+The tool's contract is: optionally accept a Pulumi package schema JSON for validation; always derive values from HCL/state.
 
 #### Why This Matters
 
@@ -315,14 +386,25 @@ Expression types that require the function table:
 - **Inputs**: Evaluated values from module call site arguments. These must exactly match what the generated Pulumi component code will pass as constructor args. Source: HCL call site parsing + expression evaluation.
 - **Outputs**: Read directly from `opentofu/states.Module.OutputValues` in the raw `.tfstate` file. Fallback: evaluate output expressions from HCL if raw state is unavailable (e.g., JSON-only input). Set via `registerOutputs()` in generated code.
 
+#### Schema Validation Step
+
+After HCL parsing produces inputs/outputs and before populating component state:
+
+1. Parse HCL to get input/output **values** (always, when source available)
+2. Read module output **values** from raw `.tfstate` (when available)
+3. If schema provided → validate parsed interface matches schema → fail on mismatch
+4. If no schema → parsed HCL interface is authoritative
+5. Populate component state with values
+
 #### Key Code Changes (Phase 2)
 
 | File | Change |
 |------|--------|
 | `pkg/hcl/` (new package) | HCL parsing, module definition extraction, expression evaluation |
+| `pkg/component_schema.go` | Load Pulumi package schema, extract component interface, validate against parsed HCL |
 | `pkg/state_adapter.go` | Populate component inputs/outputs from parsed HCL |
-| `pkg/migration/migration.go` | Add `HCLSource` field to `Module` struct |
-| `cmd/stack.go` | Add `--module-source-map` flag |
+| `pkg/migration/migration.go` | Add `HCLSource` and `SchemaPath` fields to `Module` struct |
+| `cmd/stack.go` | Add `--module-source-map` and `--module-schema` flags |
 
 ## Testing Strategy
 

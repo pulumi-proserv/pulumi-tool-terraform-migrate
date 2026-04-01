@@ -28,7 +28,8 @@
 | 2 | `feat/mc-02-component-tree` | PR 1 | Component tree builder + collision detection | **DONE** |
 | 3 | `feat/mc-03-pulumi-state` | PR 2 | `PulumiState` struct changes + component insertion into deployment | **DONE** |
 | 4 | `feat/mc-04-pipeline-integration` | PR 3 | Integration into `convertState` pipeline + CLI flags + existing test updates | **DONE** |
-| 5 | `feat/mc-05-integration-tests` | PR 4 | Test fixtures from real deployments + end-to-end integration tests | TODO |
+| 4.5 | `feat/mc-04b-schema-validation` | PR 4 | Schema validation support — load Pulumi package schema, validate component interface | TODO |
+| 5 | `feat/mc-05-integration-tests` | PR 4.5 | Test fixtures from real deployments + end-to-end integration tests | TODO |
 
 **Implementation notes (PRs 1-4):**
 - `buildComponentTree` returns `([]*componentNode, error)` (collision detection integrated from the start).
@@ -38,6 +39,8 @@
 - Unit tests for `convertState` pass `enableComponents: false` to preserve existing behavior. The `translateStateFromJson` test helper passes `enableComponents: true`.
 
 ### Phase 2: HCL Parsing & Input/Output Population (PRs 6-10)
+
+**OSS module strategy note:** OSS/third-party TF modules are handled via agent-driven strategy (terraform-module plugin or custom component). Both produce a Pulumi package schema JSON. The tool's contract is: optionally accept a schema for validation; always derive values from HCL/state. See PR 4.5 for schema validation support.
 
 | PR | Branch | Base | Scope | Status |
 |----|--------|------|-------|--------|
@@ -78,7 +81,8 @@
       "modules": [
         {
           "tf-module": "module.vpc",
-          "pulumi-type": "myproject:index:VpcComponent"
+          "pulumi-type": "myproject:index:VpcComponent",
+          "schema-path": "./schemas/vpc-component.json"
         },
         {
           "tf-module": "module.vpc.module.subnets",
@@ -112,6 +116,7 @@ func TestLoadMigrationWithModules(t *testing.T) {
 	vpc := mf.Migration.Stacks[0].Modules[0]
 	require.Equal(t, "module.vpc", vpc.TFModule)
 	require.Equal(t, "myproject:index:VpcComponent", vpc.PulumiType)
+	require.Equal(t, "./schemas/vpc-component.json", vpc.SchemaPath)
 	require.Empty(t, vpc.HCLSource)
 
 	subnets := mf.Migration.Stacks[0].Modules[1]
@@ -146,6 +151,10 @@ type Module struct {
 
 	// Path to HCL source files for this module (Phase 2).
 	HCLSource string `json:"hcl-source,omitempty"`
+
+	// Path to Pulumi package schema JSON for component interface validation.
+	// When provided, the schema is source of truth — parsed HCL interface is validated against it.
+	SchemaPath string `json:"schema-path,omitempty"`
 }
 ```
 
@@ -973,6 +982,364 @@ gh pr create --base feat/mc-03-pulumi-state \
 
 ---
 
+## PR 4.5: Schema Validation Support
+
+### File Map
+
+| Action | File | Responsibility |
+|--------|------|----------------|
+| Modify | `pkg/migration/migration.go` | Add `SchemaPath` field to `Module` struct |
+| Create | `pkg/component_schema.go` | Load schema, extract component interface, validate against parsed HCL |
+| Create | `pkg/component_schema_test.go` | Tests |
+| Create | `pkg/testdata/schemas/vpc_component_schema.json` | Test fixture: valid Pulumi package schema |
+| Modify | `cmd/stack.go` | Add `--module-schema` CLI flag |
+
+### Task 6.5: Schema validation for component interfaces
+
+**Files:** `pkg/component_schema.go`, `pkg/component_schema_test.go`, `pkg/migration/migration.go`, `cmd/stack.go`
+
+Uses `github.com/pulumi/pulumi/pkg/v3/codegen/schema` (already in `go.mod` v3.222.0). No new dependencies.
+
+- [ ] **Step 1: Create test fixture — minimal Pulumi package schema JSON**
+
+```json
+// Save as pkg/testdata/schemas/vpc_component_schema.json
+{
+  "name": "myproject",
+  "version": "0.1.0",
+  "resources": {
+    "myproject:index:VpcComponent": {
+      "isComponent": true,
+      "inputProperties": {
+        "cidr": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "requiredInputs": ["cidr", "name"],
+      "properties": {
+        "vpcId": {
+          "type": "string"
+        }
+      },
+      "required": ["vpcId"]
+    }
+  }
+}
+```
+
+- [ ] **Step 2: Write failing tests**
+
+```go
+// pkg/component_schema_test.go
+package pkg
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLoadComponentSchema(t *testing.T) {
+	iface, err := LoadComponentSchema("testdata/schemas/vpc_component_schema.json", "myproject:index:VpcComponent")
+	require.NoError(t, err)
+	require.Len(t, iface.Inputs, 2)
+	require.Len(t, iface.Outputs, 1)
+
+	// Check input fields
+	cidr := findField(iface.Inputs, "cidr")
+	require.NotNil(t, cidr)
+	require.Equal(t, "string", cidr.Type)
+	require.True(t, cidr.Required)
+
+	name := findField(iface.Inputs, "name")
+	require.NotNil(t, name)
+	require.True(t, name.Required)
+
+	// Check output fields
+	vpcId := findField(iface.Outputs, "vpcId")
+	require.NotNil(t, vpcId)
+	require.Equal(t, "string", vpcId.Type)
+}
+
+func TestLoadComponentSchema_NotFound(t *testing.T) {
+	_, err := LoadComponentSchema("testdata/schemas/vpc_component_schema.json", "myproject:index:DoesNotExist")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestLoadComponentSchema_NotComponent(t *testing.T) {
+	// Test with a resource that is not a component (isComponent = false)
+	// Should error with descriptive message
+}
+
+func TestValidateSchemaMatch(t *testing.T) {
+	schema := &ComponentInterface{
+		Inputs: []ComponentField{
+			{Name: "cidr", Type: "string", Required: true},
+			{Name: "name", Type: "string", Required: true},
+		},
+		Outputs: []ComponentField{
+			{Name: "vpcId", Type: "string"},
+		},
+	}
+	parsed := &ComponentInterface{
+		Inputs: []ComponentField{
+			{Name: "cidr", Type: "string"},
+			{Name: "name", Type: "string"},
+		},
+		Outputs: []ComponentField{
+			{Name: "vpcId", Type: "string"},
+		},
+	}
+	err := ValidateAgainstSchema(parsed, schema)
+	require.NoError(t, err)
+}
+
+func TestValidateSchemaMatch_MissingInput(t *testing.T) {
+	schema := &ComponentInterface{
+		Inputs: []ComponentField{
+			{Name: "cidr", Type: "string", Required: true},
+			{Name: "name", Type: "string", Required: true},
+		},
+	}
+	parsed := &ComponentInterface{
+		Inputs: []ComponentField{
+			{Name: "cidr", Type: "string"},
+			// "name" is missing — schema requires it
+		},
+	}
+	err := ValidateAgainstSchema(parsed, schema)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name")
+	require.Contains(t, err.Error(), "required")
+}
+
+func TestValidateSchemaMatch_ExtraOutput(t *testing.T) {
+	schema := &ComponentInterface{
+		Outputs: []ComponentField{
+			{Name: "vpcId", Type: "string"},
+		},
+	}
+	parsed := &ComponentInterface{
+		Outputs: []ComponentField{
+			{Name: "vpcId", Type: "string"},
+			{Name: "extraField", Type: "string"}, // not in schema
+		},
+	}
+	err := ValidateAgainstSchema(parsed, schema)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "extraField")
+	require.Contains(t, err.Error(), "not in schema")
+}
+
+// helpers
+func findField(fields []ComponentField, name string) *ComponentField {
+	for i := range fields {
+		if fields[i].Name == name {
+			return &fields[i]
+		}
+	}
+	return nil
+}
+```
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `go test ./pkg/ -run "TestLoadComponentSchema|TestValidateSchema" -v`
+
+- [ ] **Step 4: Implement**
+
+```go
+// pkg/component_schema.go
+package pkg
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"github.com/pulumi/pulumi/pkg/v3/codegen/schema"
+)
+
+// ComponentField represents a single input or output field of a component.
+type ComponentField struct {
+	Name     string
+	Type     string
+	Required bool
+}
+
+// ComponentInterface represents the inputs and outputs of a component resource.
+type ComponentInterface struct {
+	Inputs  []ComponentField
+	Outputs []ComponentField
+}
+
+// LoadComponentSchema loads a Pulumi package schema JSON file and extracts the
+// component interface (inputs and outputs) for the given component type token.
+func LoadComponentSchema(schemaPath string, componentType string) (*ComponentInterface, error) {
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading schema file: %w", err)
+	}
+
+	var spec schema.PackageSpec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return nil, fmt.Errorf("parsing schema JSON: %w", err)
+	}
+
+	pkg, err := schema.ImportSpec(spec, nil, schema.ValidationOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("importing schema spec: %w", err)
+	}
+
+	resource, ok := pkg.GetResource(componentType)
+	if !ok {
+		return nil, fmt.Errorf("component type %q not found in schema", componentType)
+	}
+	if !resource.IsComponent {
+		return nil, fmt.Errorf("resource %q is not a component (isComponent=false)", componentType)
+	}
+
+	iface := &ComponentInterface{}
+
+	// Extract inputs
+	requiredInputs := map[string]bool{}
+	for _, name := range resource.RequiredInputs {
+		requiredInputs[name] = true
+	}
+	for _, prop := range resource.InputProperties {
+		iface.Inputs = append(iface.Inputs, ComponentField{
+			Name:     prop.Name,
+			Type:     prop.Type.String(),
+			Required: requiredInputs[prop.Name],
+		})
+	}
+
+	// Extract outputs
+	for _, prop := range resource.Properties {
+		iface.Outputs = append(iface.Outputs, ComponentField{
+			Name: prop.Name,
+			Type: prop.Type.String(),
+		})
+	}
+
+	return iface, nil
+}
+
+// ValidateAgainstSchema validates that a parsed component interface matches a schema.
+// Schema is source of truth — mismatch is an error.
+func ValidateAgainstSchema(parsed *ComponentInterface, schema *ComponentInterface) error {
+	// Check required inputs are present
+	parsedInputs := map[string]bool{}
+	for _, f := range parsed.Inputs {
+		parsedInputs[f.Name] = true
+	}
+	for _, f := range schema.Inputs {
+		if f.Required && !parsedInputs[f.Name] {
+			return fmt.Errorf("input %q is required by schema but not found in parsed interface", f.Name)
+		}
+	}
+
+	// Check parsed outputs are in schema
+	schemaOutputs := map[string]bool{}
+	for _, f := range schema.Outputs {
+		schemaOutputs[f.Name] = true
+	}
+	for _, f := range parsed.Outputs {
+		if !schemaOutputs[f.Name] {
+			return fmt.Errorf("output %q not in schema", f.Name)
+		}
+	}
+
+	return nil
+}
+```
+
+- [ ] **Step 5: Add `SchemaPath` to `Module` struct**
+
+In `pkg/migration/migration.go`, add to `Module` struct:
+
+```go
+	// Path to Pulumi package schema JSON for validation.
+	SchemaPath string `json:"schema-path,omitempty"`
+```
+
+- [ ] **Step 6: Add `--module-schema` CLI flag**
+
+In `cmd/stack.go`:
+
+```go
+var moduleSchemas []string
+cmd.Flags().StringArrayVar(&moduleSchemas, "module-schema", nil,
+	"Pulumi package schema for component validation (repeatable, format: module.name=./path/to/schema.json)")
+```
+
+Parse and pass through the call chain, same pattern as `--module-type-map`.
+
+- [ ] **Step 7: Wire into pipeline**
+
+In `convertState`, after HCL parsing produces inputs/outputs, if schema is provided:
+
+```go
+if schemaPath != "" {
+	schemaIface, err := LoadComponentSchema(schemaPath, componentTypeToken)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading schema for %s: %w", modulePath, err)
+	}
+	if err := ValidateAgainstSchema(parsedIface, schemaIface); err != nil {
+		return nil, nil, fmt.Errorf("schema validation failed for %s: %w", modulePath, err)
+	}
+}
+```
+
+- [ ] **Step 8: Run tests to verify they pass**
+
+Run: `go test ./pkg/ -run "TestLoadComponentSchema|TestValidateSchema" -v`
+
+- [ ] **Step 9: Run full test suite**
+
+Run: `go test ./... -timeout 120s`
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add pkg/component_schema.go pkg/component_schema_test.go pkg/testdata/schemas/ pkg/migration/migration.go cmd/stack.go
+git commit -m "feat: add schema validation for component interfaces"
+```
+
+### PR 4.5 Submission
+
+```bash
+git push -u origin feat/mc-04b-schema-validation
+gh pr create --base feat/mc-04-pipeline-integration \
+  --title "feat(modules): schema validation for component interfaces" \
+  --body "$(cat <<'EOF'
+## Summary
+- Load Pulumi package schema JSON and extract component interface (inputs/outputs)
+- Validate parsed HCL interface against schema — schema is source of truth
+- Mismatch (missing required input, extra output) = descriptive error
+- `--module-schema` CLI flag and `schema-path` migration file field
+- Uses existing `pulumi/pulumi/pkg/v3/codegen/schema` — no new dependencies
+
+## Test plan
+- [ ] Load schema and extract component inputs/outputs
+- [ ] Schema match passes validation
+- [ ] Missing required input fails with descriptive error
+- [ ] Extra output not in schema fails with descriptive error
+- [ ] Component type not found in schema → error
+- [ ] Migration file with `schema-path` loads correctly
+- [ ] Full test suite passes
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+---
+
 ## PR 5: Real Deployment Test Fixtures + Integration Tests
 
 ### File Map
@@ -1562,9 +1929,9 @@ gh pr create --base feat/mc-07-callsite-tfvars \
 |--------|------|----------------|
 | Create | `pkg/hcl/convert.go` | `CtyMapToPulumiPropertyMap` — reuse existing conversion utilities |
 | Create | `pkg/hcl/convert_test.go` | Tests |
-| Modify | `pkg/state_adapter.go` | Thread HCL parsing into `convertState` |
-| Modify | `pkg/migration/migration.go` | Already has `HCLSource` field from PR 1 |
-| Modify | `cmd/stack.go` | Add `--module-source-map` flag |
+| Modify | `pkg/state_adapter.go` | Thread HCL parsing into `convertState`, integrate schema validation from PR 4.5 |
+| Modify | `pkg/migration/migration.go` | Already has `HCLSource` and `SchemaPath` fields from PR 1/4.5 |
+| Modify | `cmd/stack.go` | Add `--module-source-map` flag (schema flag already added in PR 4.5) |
 
 ### Task 12: cty-to-Pulumi property conversion
 
@@ -1623,7 +1990,13 @@ cmd.Flags().StringArrayVar(&moduleSourceMaps, "module-source-map", nil,
 
 - [ ] **Step 2: Thread HCL parsing into `convertState`**
 
-After building component tree, for each component:
+After building component tree, for each component, the full pipeline is:
+
+1. Parse HCL to get input/output **values** (always, when source available)
+2. Read module output **values** from raw `.tfstate` (when available)
+3. If schema provided → validate parsed interface matches schema → fail on mismatch (uses `LoadComponentSchema` + `ValidateAgainstSchema` from PR 4.5)
+4. If no schema → parsed HCL interface is authoritative
+5. Populate component state with values
 
 **Inputs** (from HCL parsing + expression evaluation):
 1. Resolve HCL source path: CLI flag > migration file > (later: auto-discovery)
@@ -1638,6 +2011,12 @@ After building component tree, for each component:
 1. If raw `.tfstate` is available, read `opentofu/states.Module.OutputValues` directly — these are already-resolved `cty.Value`s
 2. Convert via `CtyMapToPulumiPropertyMap`
 3. Fallback: if only JSON state is available, evaluate output expressions from HCL (same as input evaluation path)
+
+**Schema validation** (when schema-path is provided):
+- After inputs/outputs are parsed but before populating component state
+- Load schema via `LoadComponentSchema(schemaPath, componentType)` (from PR 4.5)
+- Validate via `ValidateAgainstSchema(parsed, schema)` — mismatch = error
+- Schema is source of truth for types and required fields; HCL/state provides values
 
 For nested modules: build eval context hierarchically — a nested module's context includes parent module scope.
 
