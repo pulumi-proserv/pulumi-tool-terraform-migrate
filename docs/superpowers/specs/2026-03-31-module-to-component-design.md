@@ -268,8 +268,9 @@ Add `schema-path` to the module entry:
 #### Validation Rules
 
 - Schema is **optional** — default is HCL-derived interface
-- When provided, schema is **source of truth** for the component interface (types, required fields)
-- Tool still parses HCL/state to get **values** — schema validates the **shape**
+- When provided, schema is **source of truth** for the component interface (field names, required fields)
+- Tool still parses HCL/state to get **values** — schema validates the **shape** (field presence)
+- **Type compatibility is not validated here** — it is handled by the existing value conversion pipeline (`cty.Value` → `resource.PropertyMap` via `tfbridge`), the same path used for custom resources. Pulumi component state stores values as `PropertyMap`, not type declarations.
 - Mismatch = error (not silent override). Examples:
   - Parsed HCL missing an input the schema requires → error
   - Parsed HCL has output not in schema → error
