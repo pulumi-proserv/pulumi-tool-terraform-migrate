@@ -28,15 +28,17 @@
 | 2 | `feat/mc-02-component-tree` | PR 1 | Component tree builder + collision detection | **DONE** |
 | 3 | `feat/mc-03-pulumi-state` | PR 2 | `PulumiState` struct changes + component insertion into deployment | **DONE** |
 | 4 | `feat/mc-04-pipeline-integration` | PR 3 | Integration into `convertState` pipeline + CLI flags + existing test updates | **DONE** |
-| 4.5 | `feat/mc-04b-schema-validation` | PR 4 | Schema validation support — load Pulumi package schema, validate component interface | TODO |
-| 5 | `feat/mc-05-integration-tests` | PR 4.5 | Test fixtures from real deployments + end-to-end integration tests | TODO |
+| 4.5 | `feat/mc-04b-schema-validation` | PR 4 | Schema validation support — load Pulumi package schema, validate component interface | **DONE** |
+| 5 | `feat/mc-05-integration-tests` | PR 4.5 | Test fixtures from real deployments for indexed/keyed modules | **DONE** |
 
-**Implementation notes (PRs 1-4):**
+**Implementation notes (PRs 1-5):**
 - `buildComponentTree` returns `([]*componentNode, error)` (collision detection integrated from the start).
 - `PulumiResource.Parent` field was added in PR 2 (needed by `toComponents`), not PR 3 as originally planned.
 - `PulumiNameFromTerraformAddress` now takes a `useShortName bool` third parameter. All existing call sites pass `false`.
 - `TranslateAndWriteState`, `TranslateState`, and `convertState` all accept `enableComponents bool` and `typeOverrides map[string]string` parameters.
 - Unit tests for `convertState` pass `enableComponents: false` to preserve existing behavior. The `translateStateFromJson` test helper passes `enableComponents: true`.
+- Schema validation uses `github.com/pulumi/pulumi/pkg/v3/codegen/schema` (already in `go.mod`). `LoadComponentSchema` + `ValidateAgainstSchema` validate field presence (not types — types handled by value conversion pipeline).
+- Real deployment fixtures for indexed modules (`tofu_state_indexed_modules.json`) and keyed modules (`tofu_state_keyed_modules.json`) captured from `tofu apply`.
 
 ### Phase 2: HCL Parsing & Input/Output Population (PRs 6-10)
 
@@ -44,11 +46,21 @@
 
 | PR | Branch | Base | Scope | Status |
 |----|--------|------|-------|--------|
-| 6 | `feat/mc-06-hcl-parser` | PR 5 | HCL module parser (variables + outputs) | TODO |
-| 7 | `feat/mc-07-callsite-tfvars` | PR 6 | HCL call site parser + tfvars loader | TODO |
-| 8 | `feat/mc-08-evaluator` | PR 7 | Expression evaluator + function library via `pulumi/opentofu` | TODO |
-| 9 | `feat/mc-09-state-population` | PR 8 | cty-to-Pulumi conversion + component state population integration | TODO |
-| 10 | `feat/mc-10-discovery-acceptance` | PR 9 | Auto-discovery of local module sources + clean preview acceptance test | TODO |
+| 6 | `feat/mc-06-hcl-parser` | PR 5 | HCL module parser (variables + outputs) | **DONE** |
+| 7 | `feat/mc-07-callsite-tfvars` | PR 6 | HCL call site parser + tfvars loader | **DONE** |
+| 8 | `feat/mc-08-evaluator` | PR 7 | Expression evaluator + function library via `pulumi/opentofu` | **DONE** |
+| 9 | `feat/mc-09-state-population` | PR 8 | Component state population + auto-discovery + gap fixes | **IN PROGRESS** |
+| 10 | `feat/mc-10-discovery-acceptance` | PR 9 | Comprehensive E2E state translation tests | TODO |
+
+**Implementation notes (PRs 6-8):**
+- `ParseModuleVariables` / `ParseModuleOutputs` / `ParseModuleCallSites` / `LoadTfvars` all in `pkg/hcl/parser.go`.
+- Expression evaluator uses `opentofu/lang.Scope` to get the full Terraform function table (70+ functions tested).
+- `CtyValueToPulumiPropertyValue` / `CtyMapToPulumiPropertyMap` / `PulumiPropertyMapToCtyMap` in `pkg/hcl/convert.go`.
+- Call site parser filters meta-arguments (source, version, count, for_each, providers, depends_on).
+
+**PR 9 scope change:** PR 9 now absorbs auto-discovery (originally PR 10) and all gap fixes identified during review. See updated PR 9 section below.
+
+**PR 10 scope change:** PR 10 is now comprehensive E2E state translation tests (not clean preview tests). Tests validate translated Pulumi state values — not program generation or `pulumi preview`. See updated PR 10 section below.
 
 ---
 
@@ -982,7 +994,7 @@ gh pr create --base feat/mc-03-pulumi-state \
 
 ---
 
-## PR 4.5: Schema Validation Support
+## PR 4.5: Schema Validation Support ✅
 
 ### File Map
 
@@ -1342,7 +1354,7 @@ EOF
 
 ---
 
-## PR 5: Real Deployment Test Fixtures + Integration Tests
+## PR 5: Real Deployment Test Fixtures + Integration Tests ✅
 
 ### File Map
 
@@ -1441,7 +1453,7 @@ gh pr create --base feat/mc-04-pipeline-integration \
 
 ---
 
-## PR 6: HCL Module Parser
+## PR 6: HCL Module Parser ✅
 
 ### File Map
 
@@ -1611,7 +1623,7 @@ gh pr create --base feat/mc-05-integration-tests \
 
 ---
 
-## PR 7: Call Site Parser + Tfvars Loader
+## PR 7: Call Site Parser + Tfvars Loader ✅
 
 ### File Map
 
@@ -1732,7 +1744,7 @@ gh pr create --base feat/mc-06-hcl-parser \
 
 ---
 
-## PR 8: Expression Evaluator
+## PR 8: Expression Evaluator ✅
 
 ### File Map
 
@@ -1923,110 +1935,155 @@ gh pr create --base feat/mc-07-callsite-tfvars \
 
 ---
 
-## PR 9: cty-to-Pulumi Conversion + State Population
+## PR 9: Component State Population + Auto-Discovery + Gap Fixes
 
-### File Map
+**Scope change:** PR 9 now absorbs auto-discovery (originally PR 10) and fixes all gaps identified during implementation review. The cty-to-Pulumi conversion and basic HCL population pipeline are already implemented — this PR completes the remaining work.
+
+### Already implemented (needs restacking onto mc-09)
+
+- `pkg/hcl/convert.go` — `CtyValueToPulumiPropertyValue`, `CtyMapToPulumiPropertyMap`, `PulumiPropertyMapToCtyMap`
+- `pkg/hcl/convert_test.go` — type conversion tests
+- `pkg/component_populate.go` — `populateComponentsFromHCL` with basic input evaluation and schema validation wiring
+- `pkg/hcl/discovery.go` — `DiscoverModuleSources`, `IsLocalModuleSource`
+- `pkg/hcl/discovery_test.go` — local/remote source discovery tests
+- `cmd/stack.go` — `--module-source-map` and `--module-schema` flags
+- Schema validation integration tests with type token overrides
+
+### File Map (remaining work)
 
 | Action | File | Responsibility |
 |--------|------|----------------|
-| Create | `pkg/hcl/convert.go` | `CtyMapToPulumiPropertyMap` — reuse existing conversion utilities |
-| Create | `pkg/hcl/convert_test.go` | Tests |
-| Modify | `pkg/state_adapter.go` | Thread HCL parsing into `convertState`, integrate schema validation from PR 4.5 |
-| Modify | `pkg/migration/migration.go` | Already has `HCLSource` and `SchemaPath` fields from PR 1/4.5 |
-| Modify | `cmd/stack.go` | Add `--module-source-map` flag (schema flag already added in PR 4.5) |
+| Modify | `pkg/component_populate.go` | Fix gaps: variable defaults, resource attr refs, output values from raw state |
+| Modify | `pkg/state_adapter.go` | Thread raw state file path and TF resource attributes into population pipeline |
+| Modify | `pkg/state_adapter_test.go` | Integration tests for HCL population + schema validation |
 
-### Task 12: cty-to-Pulumi property conversion
+### Task 12: Merge variable defaults into component inputs ✅ (already implemented) / Gap fix
 
-- [ ] **Step 1: Write failing tests**
+**Location:** `pkg/component_populate.go:85-117`
+
+**Problem:** When a module call site omits an argument that has a default value in the `variable` block, the component's inputs should include the default value. Currently, only explicitly passed arguments are evaluated.
+
+**Example:** If `variable "enable_dns" { default = true }` and the call site doesn't pass `enable_dns`, the component input should still have `enable_dns: true`.
+
+- [ ] **Step 1: Write failing test**
 
 ```go
-// pkg/hcl/convert_test.go
-func TestCtyMapToPulumiPropertyMap(t *testing.T) {
-	input := map[string]cty.Value{
-		"cidr":  cty.StringVal("10.0.0.0/16"),
-		"name":  cty.StringVal("production"),
-		"count": cty.NumberIntVal(2),
-		"enabled": cty.True,
-	}
-	result := CtyMapToPulumiPropertyMap(input)
-	require.Equal(t, resource.NewStringProperty("10.0.0.0/16"), result["cidr"])
-	require.Equal(t, resource.NewStringProperty("production"), result["name"])
-	require.Equal(t, resource.NewNumberProperty(2), result["count"])
-	require.Equal(t, resource.NewBoolProperty(true), result["enabled"])
-}
-
-func TestCtyMapToPulumiPropertyMap_Complex(t *testing.T) {
-	input := map[string]cty.Value{
-		"tags": cty.MapVal(map[string]cty.Value{
-			"env":  cty.StringVal("prod"),
-			"team": cty.StringVal("infra"),
-		}),
-		"ids": cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}),
-	}
-	result := CtyMapToPulumiPropertyMap(input)
-	require.NotNil(t, result["tags"])
-	require.NotNil(t, result["ids"])
+func TestPopulateComponentInputs_VariableDefaults(t *testing.T) {
+	// Module has variable "prefix" (required) and variable "suffix" { default = "-prod" }
+	// Call site passes prefix = "test" but not suffix
+	// Component inputs should have both: prefix="test", suffix="-prod"
 }
 ```
 
-- [ ] **Step 2: Implement — reuse existing `pkg/bridge/object_from_cty.go`**
+- [ ] **Step 2: Implement**
+
+After evaluating call-site arguments, parse module variables via `ParseModuleVariables`. For any variable with a default that is NOT in the call-site arguments, add the default value to inputs.
 
 ```go
-// pkg/hcl/convert.go
-func CtyMapToPulumiPropertyMap(values map[string]cty.Value) resource.PropertyMap {
-	// Wrap existing bridge conversion or implement direct cty -> PropertyValue mapping
+// In populateComponentsFromHCL, after call-site argument evaluation:
+if sourcePath != "" {
+	vars, err := hclpkg.ParseModuleVariables(sourcePath)
+	if err == nil {
+		for _, v := range vars {
+			if _, alreadySet := inputs[resource.PropertyKey(v.Name)]; !alreadySet && v.Default != nil {
+				inputs[resource.PropertyKey(v.Name)] = hclpkg.CtyValueToPulumiPropertyValue(*v.Default)
+			}
+		}
+	}
 }
 ```
 
 - [ ] **Step 3: Run tests, commit**
 
-### Task 13: Integrate HCL parsing into state population pipeline
+### Task 13: Add resource attribute refs to eval context
 
-- [ ] **Step 1: Add `--module-source-map` CLI flag**
+**Location:** `pkg/component_populate.go:100` — `NewEvalContext` called with `nil` for resources.
+
+**Problem:** HCL expressions that reference resource attributes (e.g., `aws_vpc.this.id`, `module.vpc.vpc_id`) fail to evaluate because the eval context has no resource data.
+
+- [ ] **Step 1: Write failing test**
 
 ```go
-var moduleSourceMaps []string
-cmd.Flags().StringArrayVar(&moduleSourceMaps, "module-source-map", nil,
-	"Map module to HCL source path (repeatable, format: module.name=./path)")
+func TestPopulateComponentInputs_ResourceAttrRef(t *testing.T) {
+	// Call site has: subnet_id = aws_vpc.main.id
+	// TF state has aws_vpc.main with id = "vpc-123"
+	// Component input subnet_id should be "vpc-123"
+}
 ```
 
-- [ ] **Step 2: Thread HCL parsing into `convertState`**
+- [ ] **Step 2: Implement**
 
-After building component tree, for each component, the full pipeline is:
+Build resource attribute map from TF state JSON and pass to `NewEvalContext`. The state JSON has all resource attributes available via `tfjson.StateResource.AttributeValues`.
 
-1. Parse HCL to get input/output **values** (always, when source available)
-2. Read module output **values** from raw `.tfstate` (when available)
-3. If schema provided → validate parsed interface matches schema → fail on mismatch (uses `LoadComponentSchema` + `ValidateAgainstSchema` from PR 4.5)
-4. If no schema → parsed HCL interface is authoritative
-5. Populate component state with values
+```go
+// In state_adapter.go or component_populate.go:
+func buildResourceAttrMap(tfState *tfjson.State) map[string]map[string]cty.Value {
+	resources := map[string]map[string]cty.Value{}
+	tofu.VisitResources(tfState, func(r *tfjson.StateResource) error {
+		// Parse resource type and name from address
+		// Convert r.AttributeValues (map[string]interface{}) to cty.Value
+		// Store as resources[resourceType][resourceName] = cty.ObjectVal(attrs)
+		return nil
+	}, &tofu.VisitOptions{})
+	return resources
+}
 
-**Inputs** (from HCL parsing + expression evaluation):
-1. Resolve HCL source path: CLI flag > migration file > (later: auto-discovery)
-2. Parse variables via `ParseModuleVariables` (for interface/type info)
-3. Parse call site via `ParseModuleCallSites` (for argument expressions)
-4. Load `terraform.tfvars` via `LoadTfvars`
-5. Build `EvalContext` with variables, TF state resource attributes, module outputs
-6. Evaluate call-site argument expressions → component inputs
-7. Convert via `CtyMapToPulumiPropertyMap`
+// Pass to NewEvalContext:
+evalCtx := hclpkg.NewEvalContext(evalVars, resourceAttrs, moduleOutputs)
+```
 
-**Outputs** (from raw state — simpler than HCL evaluation):
-1. If raw `.tfstate` is available, read `opentofu/states.Module.OutputValues` directly — these are already-resolved `cty.Value`s
-2. Convert via `CtyMapToPulumiPropertyMap`
-3. Fallback: if only JSON state is available, evaluate output expressions from HCL (same as input evaluation path)
+- [ ] **Step 3: Run tests, commit**
 
-**Schema validation** (when schema-path is provided):
-- After inputs/outputs are parsed but before populating component state
-- Load schema via `LoadComponentSchema(schemaPath, componentType)` (from PR 4.5)
-- Validate via `ValidateAgainstSchema(parsed, schema)` — mismatch = error
-- Schema is source of truth for types and required fields; HCL/state provides values
+### Task 14: Read output values from raw TF state
 
-For nested modules: build eval context hierarchically — a nested module's context includes parent module scope.
+**Location:** `pkg/component_populate.go:119-134` — outputs are placeholders.
 
-- [ ] **Step 3: Write integration tests**
+**Problem:** Component outputs use empty string placeholders instead of actual values from `opentofu/states.Module.OutputValues`.
+
+**Design spec says:**
+> Output values can be sourced from raw state — Since `opentofu/states.Module.OutputValues` contains resolved output values, we can read them directly from the raw `.tfstate` file.
+
+- [ ] **Step 1: Write failing test**
+
+```go
+func TestPopulateComponentOutputs_FromRawState(t *testing.T) {
+	// Raw .tfstate has module.vpc.OutputValues = {"vpc_id": "vpc-123"}
+	// Component outputs should have vpc_id = "vpc-123" (not empty string)
+}
+```
+
+- [ ] **Step 2: Implement**
+
+Thread raw state file path into `populateComponentsFromHCL`. The tool already has `pkg/statefile/` for reading raw state.
+
+```go
+// Read raw state to get module output values
+rawState, err := statefile.ReadRawState(rawStatePath)
+if err == nil {
+	for modulePath, mod := range rawState.Modules {
+		// mod.OutputValues is map[string]*OutputValue
+		// Each OutputValue has a .Value field (cty.Value)
+		outputMap := resource.PropertyMap{}
+		for name, ov := range mod.OutputValues {
+			outputMap[resource.PropertyKey(name)] = hclpkg.CtyValueToPulumiPropertyValue(ov.Value)
+		}
+		// Match modulePath to component and set outputs
+	}
+}
+```
+
+Fallback: if raw state unavailable, keep current behavior (output names from HCL declarations with empty values).
+
+- [ ] **Step 3: Run tests, commit**
+
+### Task 15: Integration tests for HCL population + schema validation
+
+- [ ] **Step 1: Write integration tests**
 
 ```go
 func TestConvertWithHCLPopulation(t *testing.T) {
 	// Real TF state + HCL source → verify component inputs/outputs populated
+	// Inputs include both call-site args and variable defaults
 }
 
 func TestConvertWithHCLPopulation_FallbackNoSource(t *testing.T) {
@@ -2034,175 +2091,244 @@ func TestConvertWithHCLPopulation_FallbackNoSource(t *testing.T) {
 }
 
 func TestConvertWithSchemaValidation(t *testing.T) {
-	// Real TF state + HCL source + real schema (from pulumi package get-schema on
-	// a component provider wrapping the test module) → schema validation passes
-	// Generate schema fixture: write a Pulumi component provider for the pet module,
-	// run `pulumi package get-schema`, capture output as test fixture.
+	// Real TF state + HCL source + schema → schema validation passes
 }
 
 func TestConvertWithSchemaValidation_Mismatch(t *testing.T) {
 	// Real TF state + HCL source + schema with extra required field → validation error
 }
+
+func TestConvertWithResourceAttrRefs(t *testing.T) {
+	// Call site references resource attributes → inputs populated correctly
+}
+
+func TestConvertWithOutputsFromRawState(t *testing.T) {
+	// Raw state available → outputs populated with real values
+}
 ```
 
-- [ ] **Step 4: Run tests, commit**
+- [ ] **Step 2: Run full test suite, commit**
 
 ### PR 9 Submission
 
 ```bash
 git push -u origin feat/mc-09-state-population
 gh pr create --base feat/mc-08-evaluator \
-  --title "feat(modules): populate component inputs/outputs from HCL" \
-  --body "..." # similar format
+  --title "feat(modules): complete component state population with gap fixes" \
+  --body "$(cat <<'EOF'
+## Summary
+- Merge variable defaults into component inputs when call site omits defaulted args
+- Build resource attribute map from TF state for eval context (enables `aws_vpc.this.id` refs)
+- Read output values from raw `.tfstate` via `opentofu/states.Module.OutputValues`
+- Auto-discover local module sources from root HCL files
+- Integration tests for HCL population + schema validation
+
+## Test plan
+- [ ] Variable defaults merged into inputs
+- [ ] Resource attribute refs evaluate correctly
+- [ ] Output values read from raw state (not placeholders)
+- [ ] Auto-discovery finds local sources, skips remote
+- [ ] Schema validation integration tests pass
+- [ ] Full test suite passes
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
 ```
 
 ---
 
-## PR 10: Auto-Discovery + Clean Preview Acceptance Test
+## PR 10: Comprehensive E2E State Translation Tests
+
+**Scope change:** PR 10 is now comprehensive E2E tests for the full state translation pipeline. Tests validate translated Pulumi state values — not program generation or `pulumi preview`. The tool's job is to translate as much state as possible, and fail or warn on elements it can't translate.
+
+### Approach
+
+- **Real fixtures from real deployments**: Deploy with `tofu apply` during development (using `team-ce/aws/pulumi-ce` ESC env, or `pulumi/default/dev-sandbox` for Route53 domains). Capture state with `tofu show -json`. Commit fixtures. Tests don't deploy infrastructure.
+- **AWS provider**: Real-world modules from `terraform-aws-modules/*`. Also keep random-provider fixtures for simpler structure tests.
+- **Test file**: `pkg/state_adapter_test.go`
+- **HCL fixtures**: `pkg/testdata/tf_<name>/` with `.tf` files matching state
+- **Schema fixtures**: `pkg/testdata/schemas/`
 
 ### File Map
 
 | Action | File | Responsibility |
 |--------|------|----------------|
-| Create | `pkg/hcl/discovery.go` | Auto-discover local module sources from root HCL |
-| Create | `pkg/hcl/discovery_test.go` | Tests |
-| Create | `test/testdata/component_preview/` | End-to-end test fixtures (TF + Pulumi) |
-| Modify | `test/translate_test.go` | Clean preview acceptance test |
+| Copy | `pkg/testdata/tofu_state_dns_to_db.json` | DNS-to-DB state from existing deployment |
+| Copy | `pkg/testdata/tf_dns_to_db/` | HCL source matching DNS-to-DB state |
+| Create | `pkg/testdata/tf_multi_resource_module/` + state | Multi-resource module (random provider) |
+| Create | `pkg/testdata/tf_deep_nested_mixed/` + state | 3-level nesting with mixed count/for_each |
+| Create | `pkg/testdata/tf_complex_expressions/` + state | Function calls + conditionals in args |
+| Create | `pkg/testdata/tf_tfvars_resolution/` + state | Tfvars + variable defaults |
+| Create | `pkg/testdata/tf_special_key_modules/` + state | Special chars in for_each keys |
+| Create | `pkg/testdata/schemas/zoo_component_schema.json` | Schema fixtures |
+| Modify | `pkg/state_adapter_test.go` | All new test functions |
 
-### Task 14: Auto-discovery of local module sources
+### Fixtures
 
-- [ ] **Step 1: Create test fixture**
+#### Fixture 1: DNS-to-DB Stack (already deployed, state captured)
+
+**Source**: `tf_stack_dns_to_db` repo
+**Module tree** (~90 managed resources, 2 data sources):
+```
+root (7 managed: aws_eip, aws_route53_record, null_resource, 6x aws_lb_target_group_attachment)
+├── module.vpc (25 managed) — terraform-aws-modules/vpc/aws v5.4.0
+├── module.public_bastion_sg (3 managed) — security-group
+├── module.private_sg (5 managed) — security-group
+├── module.loadbalancer_sg (5 managed) — security-group
+├── module.rdsdb_sg (3 managed) — security-group
+├── module.ec2_public (4 managed) — ec2-instance (single)
+├── module.ec2_private_app1["0"] (4 managed) — ec2-instance (for_each)
+├── module.ec2_private_app1["1"] (4 managed)
+├── module.ec2_private_app2["0"] (4 managed) — ec2-instance (for_each)
+├── module.ec2_private_app2["1"] (4 managed)
+├── module.ec2_private_app3["0"] (3 managed) — ec2-instance (for_each)
+├── module.ec2_private_app3["1"] (3 managed)
+├── module.alb (10 managed) — alb v9.4.0
+├── module.acm (3 managed) — acm v5.0.0
+└── module.rdsdb (nested submodules)
+    ├── module.rdsdb.module.db_instance (0 managed, 2 data)
+    ├── module.rdsdb.module.db_option_group (1 managed)
+    ├── module.rdsdb.module.db_parameter_group (1 managed)
+    └── module.rdsdb.module.db_subnet_group (1 managed)
+```
+
+**Key HCL features**: for_each, function chaining (`element`, `tonumber`), `templatefile`, string interpolation, module-to-module refs, nested modules, multiple providers, sensitive values.
+
+#### Fixture 2: Multi-resource module (random provider)
+
+```
+module.zoo → random_pet.animal + random_string.tag + random_integer.count
+```
+
+#### Fixture 3: Deep nested mixed (random provider)
+
+```
+module.env["dev"].module.svc[0].module.instance.random_pet.this
+module.env["prod"].module.svc[1].module.instance.random_pet.this
+```
+
+#### Fixture 4: Complex HCL expressions (random provider)
 
 ```hcl
-# pkg/hcl/testdata/root_with_local/main.tf
-module "vpc" {
-  source = "./modules/vpc"
-  cidr   = "10.0.0.0/16"
-}
-
-# pkg/hcl/testdata/root_with_registry/main.tf
-module "from_registry" {
-  source  = "terraform-aws-modules/rds/aws"
-  version = "6.1.0"
+module "svc" {
+  count      = 2
+  prefix     = join("-", ["svc", format("%02d", count.index)])
+  is_primary = count.index == 0 ? true : false
+  label      = upper("service-${count.index}")
 }
 ```
 
-- [ ] **Step 2: Write failing tests**
-
-```go
-// pkg/hcl/discovery_test.go
-func TestDiscoverLocalModuleSources(t *testing.T) {
-	sources, err := DiscoverModuleSources("testdata/root_with_local")
-	require.NoError(t, err)
-	require.Equal(t, "./modules/vpc", sources["module.vpc"])
-}
-
-func TestDiscoverRemoteModuleSourceSkipped(t *testing.T) {
-	sources, err := DiscoverModuleSources("testdata/root_with_registry")
-	require.NoError(t, err)
-	_, ok := sources["module.from_registry"]
-	require.False(t, ok) // remote sources need explicit mapping
-}
-```
-
-- [ ] **Step 3: Implement**
-
-```go
-// pkg/hcl/discovery.go
-// DiscoverModuleSources parses root .tf files and extracts local module source paths.
-// Remote sources (registry, git) are skipped — they require explicit mapping.
-// Note: Terragrunt users must provide explicit mappings via CLI/migration file.
-func DiscoverModuleSources(rootDir string) (map[string]string, error) {
-	// Reuse ParseModuleCallSites, filter to sources starting with "./" or "../"
-}
-```
-
-- [ ] **Step 4: Run tests, commit**
-
-### Task 15: Clean preview acceptance test
-
-This is the ultimate acceptance test from the spec.
-
-- [ ] **Step 1: Create Terraform module test fixtures**
-
-Use `random` provider (no cloud credentials):
+#### Fixture 5: Tfvars + variable defaults (random provider)
 
 ```hcl
-# test/testdata/component_preview/tf/main.tf
-module "pets" {
-  source    = "./modules/pets"
-  prefix    = "test"
-  count_val = 2  # "count_val" not "count" (reserved)
-}
-
-# test/testdata/component_preview/tf/modules/pets/variables.tf
-variable "prefix" { type = string }
-variable "count_val" { type = number }
-
-# test/testdata/component_preview/tf/modules/pets/main.tf
-resource "random_pet" "this" {
-  count  = var.count_val
-  prefix = var.prefix
-}
-
-# test/testdata/component_preview/tf/modules/pets/outputs.tf
-output "names" { value = random_pet.this[*].id }
+variable "env" { type = string }            # from tfvars: "staging"
+variable "team" { default = "platform" }    # from default
+module "named" { prefix = var.env ; suffix = var.team }
 ```
 
-- [ ] **Step 2: Create equivalent Pulumi component code**
+#### Fixture 6: Special key sanitization (random provider)
 
-Write a Pulumi Go program with a `PetsComponent` ComponentResource that:
-- Accepts `prefix` and `countVal` as constructor args
-- Creates `random_pet` resources as children
-- Calls `RegisterOutputs` with `names`
-
-This code must produce state that matches what the translated state contains.
-
-- [ ] **Step 3: Write the acceptance test**
-
-```go
-// test/translate_test.go
-func TestCleanPreview(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping acceptance test in short mode")
-	}
-
-	// 1. tofu init && tofu apply on TF code
-	// 2. Translate TF state with HCL parsing + module source map
-	// 3. pulumi stack import the translated state
-	// 4. pulumi preview on the equivalent Pulumi code
-	// 5. Assert zero diffs (preview output contains "no changes")
-}
+```
+module.region["us-east-1"]        → region-us-east-1
+module.region["eu-west-1/zone-a"] → region-eu-west-1-zone-a
+module.region["ap.southeast.2"]   → region-ap-southeast-2
 ```
 
-- [ ] **Step 4: Run and iterate until clean preview**
+### Test Functions
 
-Run: `go test ./test/ -run "TestCleanPreview" -v -timeout 300s`
-Expected: PASS with zero preview diffs.
+#### DNS-to-DB (Fixture 1) — real-world complexity
 
-- [ ] **Step 5: Commit**
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertDnsToDb` | components=true, no HCL | ~15 components. Resources parented correctly. Nested rdsdb submodules produce `$` URN chain. for_each instances share type token. Root resources parented to Stack. |
+| `TestConvertDnsToDb_TypeOverrides` | type overrides for vpc + ec2 | Custom types applied to all for_each instances. Others keep derived types. |
+| `TestConvertDnsToDb_FlatMode` | components=false | 0 components. ~90 resources all parented to Stack. |
+| `TestConvertDnsToDb_WithHCL` | + tfSourceDir | Root-level module inputs populated. Nested rdsdb inputs NOT populated (known limitation). |
+
+#### Multi-resource module (Fixture 2)
+
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertMultiResourceModule` | components=true | 1 component `zoo`, 3 children parented to it. |
+| `TestConvertMultiResourceModule_WithHCL` | + tfSourceDir | Inputs populated. Outputs have correct keys. |
+| `TestConvertMultiResourceModule_SchemaPass` | + matching schema | No error. |
+| `TestConvertMultiResourceModule_SchemaExtraOutput` | + mismatch schema | Error: "not in schema". |
+
+#### Deep nested mixed (Fixture 3)
+
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertDeepNestedMixed` | components=true | 10 components (2 env + 4 svc + 4 instance). URN type chain: `Env$Svc$Instance`. |
+| `TestConvertDeepNestedMixed_FlatMode` | components=false | 0 components, all parented to Stack. |
+
+#### Complex HCL expressions (Fixture 4)
+
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertComplexExpressions` | + tfSourceDir | svc-0: prefix="svc-00", is_primary=true, label="SERVICE-0". |
+
+#### Tfvars + defaults (Fixture 5)
+
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertTfvarsResolution` | + tfSourceDir (with tfvars) | prefix="staging", suffix="platform" (from default). |
+
+#### Special keys (Fixture 6)
+
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertSpecialKeyModules` | components=true | 3 components. Names sanitized correctly. No collision. |
+
+#### Error cases
+
+| Test | Config | Key Assertions |
+|------|--------|----------------|
+| `TestConvertSchemaFileNotFound` | nonexistent schema path | Error: "reading schema file" |
+| `TestConvertSchemaTypeNotFound` | wrong type token | Error: "not found in schema" |
+| `TestConvertFlatMode_AllFixtures` | Table-driven, components=false | 0 components for all fixtures. |
+
+### Implementation Order
+
+1. **Copy DNS-to-DB fixture** — state JSON + HCL from existing deployment
+2. **Create + deploy random-provider fixtures** — write HCL, `tofu apply`, capture state
+3. **Create schema fixtures** by hand
+4. **Write tests** — DNS-to-DB first, then simpler fixtures
+5. **Run and iterate**
+
+### Verification
 
 ```bash
-git add test/ pkg/hcl/
-git commit -m "test: add clean preview acceptance test for component resources"
+go test ./pkg/ -run "TestConvertDnsToDb|TestConvertMultiResource|TestConvertDeepNested|TestConvertComplex|TestConvertTfvars|TestConvertSpecialKey|TestConvertSchema|TestConvertFlatMode_All" -v -count=1
+go test ./pkg/... -count=1
 ```
+
+### Known Limitations (tests document, don't fix)
+
+1. **Nested module HCL population**: `populateComponentsFromHCL` only parses call sites from root dir.
+2. **Root-level resources**: Resources not inside a module are parented to Stack, not to any component.
 
 ### PR 10 Submission
 
 ```bash
-git push -u origin feat/mc-10-discovery-acceptance
+git push -u origin feat/mc-10-e2e-tests
 gh pr create --base feat/mc-09-state-population \
-  --title "feat(modules): auto-discovery + clean preview acceptance test" \
+  --title "test(modules): comprehensive E2E state translation tests" \
   --body "$(cat <<'EOF'
 ## Summary
-- Auto-discovers local module sources from root .tf files
-- Clean preview acceptance test: TF deploy → translate with HCL → Pulumi preview = 0 diffs
-- Terragrunt users must use explicit source mapping (documented)
+- Real-world E2E tests using DNS-to-DB stack (~90 resources, nested modules, for_each)
+- Random-provider fixtures for targeted feature coverage
+- Schema validation integration tests
+- Flat mode sweep across all fixtures
 
 ## Test plan
-- [ ] Auto-discovery finds local module sources
-- [ ] Auto-discovery skips registry/git module sources
-- [ ] Clean preview acceptance test passes with zero diffs
+- [ ] DNS-to-DB: components, type overrides, flat mode, HCL population
+- [ ] Multi-resource module: component wrapping, schema validation
+- [ ] Deep nested: 3-level hierarchy with mixed count/for_each
+- [ ] Complex expressions: function calls, conditionals
+- [ ] Tfvars + variable defaults
+- [ ] Special key sanitization
+- [ ] Error cases: schema not found, type mismatch
 - [ ] Full test suite passes
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
