@@ -1000,6 +1000,8 @@ gh pr create --base feat/mc-03-pulumi-state \
 
 Uses `github.com/pulumi/pulumi/pkg/v3/codegen/schema` (already in `go.mod` v3.222.0). No new dependencies.
 
+**Note on testing:** PR 4.5 unit tests use a hand-crafted schema fixture to test `LoadComponentSchema` and `ValidateAgainstSchema` in isolation. End-to-end schema validation tests (with real schema from `pulumi package get-schema` on a component provider, validated against HCL-parsed inputs/outputs) belong in **PR 9** — that's when HCL parsing produces the parsed interface needed to validate against the schema. Type compatibility is handled by the value conversion pipeline (`cty.Value` → `resource.PropertyMap` via `tfbridge`), not by schema validation — validation only checks field presence and required fields.
+
 - [ ] **Step 1: Create test fixture — minimal Pulumi package schema JSON**
 
 ```json
@@ -2029,6 +2031,17 @@ func TestConvertWithHCLPopulation(t *testing.T) {
 
 func TestConvertWithHCLPopulation_FallbackNoSource(t *testing.T) {
 	// No HCL source available → component has empty inputs/outputs, warning logged
+}
+
+func TestConvertWithSchemaValidation(t *testing.T) {
+	// Real TF state + HCL source + real schema (from pulumi package get-schema on
+	// a component provider wrapping the test module) → schema validation passes
+	// Generate schema fixture: write a Pulumi component provider for the pet module,
+	// run `pulumi package get-schema`, capture output as test fixture.
+}
+
+func TestConvertWithSchemaValidation_Mismatch(t *testing.T) {
+	// Real TF state + HCL source + schema with extra required field → validation error
 }
 ```
 
