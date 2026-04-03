@@ -16,6 +16,7 @@ package pkg
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
@@ -55,6 +56,57 @@ func classifyResources(t *testing.T, data *TranslateStateResult) (stack []apityp
 		}
 	}
 	return
+}
+
+func TestConvertDnsToDb_WithHCLAndModuleCache(t *testing.T) {
+	t.Parallel()
+
+	// Skip if module cache doesn't exist (requires tofu init)
+	if _, err := os.Stat("testdata/tf_dns_to_db/.terraform/modules/modules.json"); os.IsNotExist(err) {
+		t.Skip("skipping: requires tofu init on tf_dns_to_db fixture (run: cd pkg/testdata/tf_dns_to_db && tofu init -backend=false)")
+	}
+
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_dns_to_db.json",
+	})
+	require.NoError(t, err)
+
+	// Pass tfSourceDir to enable HCL parsing + module cache resolution
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, true, nil, nil, nil, "testdata/tf_dns_to_db")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+	require.Equal(t, 18, len(components), "expected 18 component resources")
+
+	// With module cache, most components should have populated inputs
+	withInputs := 0
+	withOutputs := 0
+	for _, c := range components {
+		if len(c.Inputs) > 0 {
+			withInputs++
+		}
+		if len(c.Outputs) > 0 {
+			withOutputs++
+		}
+	}
+	// Top-level modules should have inputs (from call-site eval with locals, data, tfvars, module cross-refs)
+	require.GreaterOrEqual(t, withInputs, 10, "at least 10 components should have populated inputs with module cache")
+
+	// Check component-schemas.json metadata is returned
+	require.NotNil(t, data.ComponentMetadata, "should return component schema metadata")
+	require.GreaterOrEqual(t, len(data.ComponentMetadata.Components), 10, "metadata should have entries for most modules")
+
+	// Verify metadata has Pulumi-formatted types for inputs that declare them
+	typedInputs := 0
+	for _, schema := range data.ComponentMetadata.Components {
+		for _, inp := range schema.Inputs {
+			if inp.Type != nil {
+				typedInputs++
+			}
+		}
+	}
+	require.Greater(t, typedInputs, 0, "at least some inputs should have Pulumi-formatted types")
 }
 
 func TestConvertDnsToDb(t *testing.T) {
