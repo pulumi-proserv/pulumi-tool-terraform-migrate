@@ -17,6 +17,7 @@ package pkg
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
@@ -107,6 +108,51 @@ func TestConvertDnsToDb_WithHCLAndModuleCache(t *testing.T) {
 		}
 	}
 	require.Greater(t, typedInputs, 0, "at least some inputs should have Pulumi-formatted types")
+}
+
+func TestConvertDnsToDb_EvalWarningCount(t *testing.T) {
+	// NOT parallel — temporarily redirects os.Stderr to count warnings.
+	if _, err := os.Stat("testdata/tf_dns_to_db/.terraform/modules/modules.json"); os.IsNotExist(err) {
+		t.Skip("skipping: requires tofu init on tf_dns_to_db fixture (run: cd pkg/testdata/tf_dns_to_db && tofu init -backend=false)")
+	}
+
+	// Capture stderr to count Warning lines
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = w
+
+	ctx := context.Background()
+	tfState, loadErr := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_dns_to_db.json",
+	})
+	require.NoError(t, loadErr)
+
+	_, translateErr := TranslateState(ctx, tfState, nil, "dev", "test-project", true, true, nil, nil, nil, "testdata/tf_dns_to_db")
+	require.NoError(t, translateErr)
+
+	// Restore stderr and read captured output
+	w.Close()
+	os.Stderr = origStderr
+	buf := make([]byte, 1<<20) // 1MB
+	n, _ := r.Read(buf)
+	captured := buf[:n]
+	r.Close()
+
+	// Count and log Warning lines so we can act on them
+	var warnings []string
+	for _, line := range strings.Split(string(captured), "\n") {
+		if strings.Contains(line, "Warning:") {
+			warnings = append(warnings, line)
+		}
+	}
+
+	t.Logf("DNS-to-DB eval warnings: %d", len(warnings))
+	for i, w := range warnings {
+		t.Logf("  [%d] %s", i+1, w)
+	}
+	// Was 68 before nested var scope fixes, currently ~12. Threshold guards against regressions.
+	require.Less(t, len(warnings), 20, "eval warning count regressed (was 68 before fixes, target: keep decreasing)")
 }
 
 func TestConvertDnsToDb(t *testing.T) {
