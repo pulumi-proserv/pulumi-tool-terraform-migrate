@@ -466,7 +466,8 @@ func TestConvertFlatMode_AllFixtures(t *testing.T) {
 		name      string
 		stateFile string
 	}{
-		{"dns_to_db", "testdata/tofu_state_dns_to_db.json"},
+		// dns_to_db excluded — has its own TestConvertDnsToDb_FlatMode test,
+		// and parallel execution causes "text file busy" on the null provider plugin.
 		{"multi_resource_module", "testdata/tofu_state_multi_resource_module.json"},
 		{"deep_nested_mixed", "testdata/tofu_state_deep_nested_mixed.json"},
 		{"complex_expressions", "testdata/tofu_state_complex_expressions.json"},
