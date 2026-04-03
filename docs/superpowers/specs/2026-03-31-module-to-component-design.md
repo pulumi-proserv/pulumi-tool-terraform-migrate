@@ -99,7 +99,23 @@ HCL parsing serves three purposes:
 
 3. **Schema metadata generation** (needed when `--component-inputs=false`) — Even when inputs are not written to state, the code generator needs the component interface (variable names, types, defaults, output names). HCL parsing extracts this into a sidecar `component-schemas.json` file.
 
-**Output values can be sourced from raw state** — Since `opentofu/states.Module.OutputValues` contains resolved output values, we can read them directly from the raw `.tfstate` file instead of evaluating output expressions from HCL. This is simpler and more reliable than expression evaluation. The tool already has a `pkg/statefile/` package that reads raw state via the `opentofu/states` library.
+**Output values are evaluated from HCL** — TF state v4 format does NOT persist module-level output values (only root outputs and resource attributes). Module outputs are computed at runtime during plan/apply and not serialized. Output `value` expressions are evaluated from HCL using the module's child resource attributes from state as the eval context.
+
+### Why Custom HCL Parsing (Not Reusing Existing Pulumi Code)
+
+The Pulumi ecosystem has extensive HCL parsing infrastructure:
+
+- **`codegen/pcl`** (Pulumi SDK) — binds HCL syntax to Pulumi's type system for *code generation*. It produces Pulumi programs, not concrete values.
+- **`tf2pulumi/convert`** (Terraform Bridge) — converts TF HCL *syntax* to PCL syntax. It's a syntax-to-syntax transformer with an intermediate language (`il/graph.go` with `ModuleNode`, `LocalNode`, etc.).
+
+**Neither serves our use case.** We need to evaluate HCL expressions to *concrete values* (strings, numbers, objects) using TF state data as the eval context, then insert those values into Pulumi component state. This is fundamentally different from syntax transformation or type-system binding.
+
+Our custom `pkg/hcl/` package (~1600 lines) uses the correct foundation:
+- `hashicorp/hcl/v2` for parsing (same as all Pulumi/Terraform tools)
+- `opentofu/lang.Scope.Functions()` for the full Terraform function library
+- `hcl.Expression.Value(ctx)` for expression evaluation against a populated eval context
+
+The eval context is populated with data that neither PCL nor tf2pulumi provides: resource attributes from TF state JSON, data source attributes, resolved locals, module cross-references, tfvars values, and path references. This is a state-translation concern, not a code-generation concern.
 
 ## Design
 
