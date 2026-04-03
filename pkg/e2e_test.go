@@ -220,3 +220,275 @@ func isProvider(r apitype.ResourceV3) bool {
 	const prefix = "pulumi:providers:"
 	return len(r.Type) >= len(prefix) && string(r.Type)[:len(prefix)] == prefix
 }
+
+// --- Multi-resource module (Fixture 2) ---
+
+func TestConvertMultiResourceModule(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_multi_resource_module.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, false, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	_, _, components, custom := classifyResources(t, data)
+
+	// 1 component: zoo
+	require.Len(t, components, 1, "expected 1 component (zoo)")
+	zoo := components[0]
+	require.Equal(t, "terraform:module/zoo:Zoo", string(zoo.Type))
+
+	// 3 child resources parented to zoo
+	zooURN := string(zoo.URN)
+	var children []apitype.ResourceV3
+	for _, r := range custom {
+		if string(r.Parent) == zooURN {
+			children = append(children, r)
+		}
+	}
+	require.Len(t, children, 3, "expected 3 child resources (random_pet, random_string, random_integer)")
+}
+
+func TestConvertMultiResourceModule_WithHCL(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_multi_resource_module.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, true, nil, nil, nil, "testdata/tf_multi_resource_module")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+	require.Len(t, components, 1)
+
+	zoo := components[0]
+
+	// Component inputs should contain prefix
+	require.NotNil(t, zoo.Inputs, "component inputs should not be nil")
+	require.Equal(t, "myprefix", zoo.Inputs["prefix"], "prefix input should be 'myprefix'")
+
+	// Component outputs should have animal_name and tag keys
+	require.NotNil(t, zoo.Outputs, "component outputs should not be nil")
+	_, hasAnimalName := zoo.Outputs["animal_name"]
+	require.True(t, hasAnimalName, "outputs should have animal_name key")
+	_, hasTag := zoo.Outputs["tag"]
+	require.True(t, hasTag, "outputs should have tag key")
+}
+
+// --- Deep nested mixed (Fixture 3) ---
+
+func TestConvertDeepNestedMixed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_deep_nested_mixed.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, true, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+
+	// 10 total components: 2 env + 4 svc + 4 instance
+	require.Len(t, components, 10, "expected 10 components (2 env + 4 svc + 4 instance)")
+
+	// URN type chain should use $ for nesting (full form: ...Env$terraform:module/svc:Svc$terraform:module/instance:Instance)
+	foundNestedType := false
+	for _, c := range components {
+		urn := string(c.URN)
+		if contains(urn, "Svc$terraform:module/instance:Instance") {
+			foundNestedType = true
+			break
+		}
+	}
+	require.True(t, foundNestedType, "should have $-delimited nested URN type chain")
+
+	// env-dev should sort before env-prod (alphabetical ordering)
+	devIdx := -1
+	prodIdx := -1
+	for i, r := range data.Export.Deployment.Resources {
+		urn := string(r.URN)
+		if contains(urn, "env-dev") && devIdx == -1 {
+			devIdx = i
+		}
+		if contains(urn, "env-prod") && prodIdx == -1 {
+			prodIdx = i
+		}
+	}
+	require.Greater(t, devIdx, -1, "env-dev should be present")
+	require.Greater(t, prodIdx, -1, "env-prod should be present")
+	require.Less(t, devIdx, prodIdx, "env-dev should sort before env-prod")
+}
+
+func TestConvertDeepNestedMixed_FlatMode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_deep_nested_mixed.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", false, false, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+	require.Len(t, components, 0, "flat mode should produce 0 components")
+
+	// All managed resources should be parented to Stack
+	stackURN := ""
+	for _, r := range data.Export.Deployment.Resources {
+		if string(r.Type) == "pulumi:pulumi:Stack" {
+			stackURN = string(r.URN)
+			break
+		}
+	}
+	for _, r := range data.Export.Deployment.Resources {
+		if !r.Custom || isProvider(r) || string(r.Type) == "pulumi:pulumi:Stack" {
+			continue
+		}
+		require.Equal(t, stackURN, string(r.Parent), "resource %s should be parented to Stack in flat mode", r.URN)
+	}
+}
+
+// --- Complex HCL expressions (Fixture 4) ---
+
+func TestConvertComplexExpressions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_complex_expressions.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, true, nil, nil, nil, "testdata/tf_complex_expressions")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+
+	// Find svc-0 and svc-1 components by URN
+	var svc0, svc1 *apitype.ResourceV3
+	for i, c := range components {
+		urn := string(c.URN)
+		if contains(urn, "svc-0") && !contains(urn, "svc-01") {
+			svc0 = &components[i]
+		}
+		if contains(urn, "svc-1") {
+			svc1 = &components[i]
+		}
+	}
+	require.NotNil(t, svc0, "svc-0 component should exist")
+	require.NotNil(t, svc1, "svc-1 component should exist")
+
+	// svc-0: prefix="svc-00", is_primary=true, label="SERVICE-0"
+	require.NotNil(t, svc0.Inputs)
+	require.Equal(t, "svc-00", svc0.Inputs["prefix"], "svc-0 prefix should be 'svc-00'")
+	require.Equal(t, true, svc0.Inputs["is_primary"], "svc-0 is_primary should be true")
+	require.Equal(t, "SERVICE-0", svc0.Inputs["label"], "svc-0 label should be 'SERVICE-0'")
+
+	// svc-1: prefix="svc-01", is_primary=false, label="SERVICE-1"
+	require.NotNil(t, svc1.Inputs)
+	require.Equal(t, "svc-01", svc1.Inputs["prefix"], "svc-1 prefix should be 'svc-01'")
+	require.Equal(t, false, svc1.Inputs["is_primary"], "svc-1 is_primary should be false")
+	require.Equal(t, "SERVICE-1", svc1.Inputs["label"], "svc-1 label should be 'SERVICE-1'")
+}
+
+// --- Tfvars resolution (Fixture 5) ---
+
+func TestConvertTfvarsResolution(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_tfvars_resolution.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, true, nil, nil, nil, "testdata/tf_tfvars_resolution")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+	require.GreaterOrEqual(t, len(components), 1, "should have at least 1 component")
+
+	// Component inputs should have prefix="staging" (from tfvars env="staging")
+	// and suffix="prod" (from variable default)
+	comp := components[0]
+	require.NotNil(t, comp.Inputs, "component inputs should not be nil")
+	require.Equal(t, "staging", comp.Inputs["prefix"], "prefix should be 'staging' from tfvars")
+	require.Equal(t, "prod", comp.Inputs["suffix"], "suffix should be 'prod' from variable default")
+}
+
+// --- Special key sanitization (Fixture 6) ---
+
+func TestConvertSpecialKeyModules(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+		StateFilePath: "testdata/tofu_state_special_key_modules.json",
+	})
+	require.NoError(t, err)
+
+	data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", true, false, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	_, _, components, _ := classifyResources(t, data)
+	require.Len(t, components, 3, "expected 3 components")
+
+	// Names should be sanitized
+	expectedNames := map[string]bool{
+		"region-us-east-1":         false,
+		"region-eu-west-1-zone-a":  false,
+		"region-ap-southeast-2":    false,
+	}
+	for _, c := range components {
+		urn := string(c.URN)
+		for name := range expectedNames {
+			if contains(urn, name) {
+				expectedNames[name] = true
+			}
+		}
+	}
+	for name, found := range expectedNames {
+		require.True(t, found, "should find sanitized component name: %s", name)
+	}
+}
+
+// --- Flat mode sweep (all fixtures) ---
+
+func TestConvertFlatMode_AllFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtures := []struct {
+		name      string
+		stateFile string
+	}{
+		{"dns_to_db", "testdata/tofu_state_dns_to_db.json"},
+		{"multi_resource_module", "testdata/tofu_state_multi_resource_module.json"},
+		{"deep_nested_mixed", "testdata/tofu_state_deep_nested_mixed.json"},
+		{"complex_expressions", "testdata/tofu_state_complex_expressions.json"},
+		{"tfvars_resolution", "testdata/tofu_state_tfvars_resolution.json"},
+		{"special_key_modules", "testdata/tofu_state_special_key_modules.json"},
+	}
+
+	for _, tt := range fixtures {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			tfState, err := tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
+				StateFilePath: tt.stateFile,
+			})
+			require.NoError(t, err)
+
+			data, err := TranslateState(ctx, tfState, nil, "dev", "test-project", false, false, nil, nil, nil, "")
+			require.NoError(t, err)
+
+			_, _, components, _ := classifyResources(t, data)
+			require.Len(t, components, 0, "flat mode should produce 0 components for %s", tt.name)
+		})
+	}
+}
