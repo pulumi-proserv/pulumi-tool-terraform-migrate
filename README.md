@@ -70,7 +70,8 @@ By default, the tool translates Terraform module hierarchy into Pulumi `Componen
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--no-module-components` | `false` | Disable component generation entirely. All resources are flattened under the Stack with module paths baked into resource names (legacy behavior). |
-| `--component-inputs` | `true` | Populate component inputs in translated state. Set to `true` when generated code will use **component providers** (e.g., `pulumi-terraform-module` plugin, IDP-registered components). Set to `false` for **single-language `ComponentResource` classes**, which historically send empty inputs. When `false`, a `component-schemas.json` sidecar file is written with the component interface for the code generator. |
+| `--state-file` | none | Path to a pre-captured state file (`tofu show -json` output or `terraform.tfstate`). Bypasses running tofu commands. Use when state is captured separately from the HCL source directory. |
+| `--component-inputs` | `true` | Populate component inputs in translated state. Set to `true` when generated code will use **component providers** (e.g., `pulumi-terraform-module` plugin, IDP-registered components). Set to `false` for **single-language `ComponentResource` classes**, which historically send empty inputs. |
 | `--module-type-map` | none | Override the auto-derived type token for a module. Repeatable. Format: `module.name=pkg:mod:Type`. Applies to all `for_each`/`count` instances of the module. |
 | `--module-source-map` | none | Map a module to its HCL source path when auto-discovery can't find it (remote modules, non-standard layouts). Repeatable. Format: `module.name=./path`. |
 | `--module-schema` | none | Provide a Pulumi package schema JSON for component interface validation. Repeatable. Format: `module.name=./path/to/schema.json`. When provided, the schema is the source of truth — mismatches between parsed HCL and schema produce errors. |
@@ -81,9 +82,11 @@ By default, the tool translates Terraform module hierarchy into Pulumi `Componen
 
 2. **HCL parsing**: When TF source files are available (via `--from`), the tool parses module call sites, evaluates argument expressions using the full Terraform function library, and populates component inputs and outputs.
 
-3. **Input population**: Call-site argument expressions are evaluated against an HCL context populated with `terraform.tfvars` values, resource attributes from TF state, and `count.index`/`each.key` meta-arguments. Variable defaults are merged for any argument not explicitly passed at the call site.
+3. **Input population**: Call-site argument expressions are evaluated against an HCL context populated with `terraform.tfvars` + `*.auto.tfvars`, resource attributes from TF state, data source attributes, `locals` values, `module.*` cross-references, `path.*` variables, and `count.index`/`each.key` meta-arguments. Variable defaults are merged for any argument not explicitly passed at the call site. Remote module sources are resolved from the `.terraform/modules/` cache after `tofu init`.
 
 4. **Output population**: Output `value` expressions from HCL are evaluated using the module's child resource attributes from state. Falls back to recording output names with empty values when evaluation fails.
+
+5. **Schema metadata**: A `component-schemas.json` sidecar file is always written alongside the state output. It contains Pulumi-typed component interfaces (input/output names, types, defaults, descriptions) for the code generation agent. Types use Pulumi package schema format (e.g., `"string"`, `{"type": "array", "items": "string"}`).
 
 5. **Schema validation**: When `--module-schema` is provided, the parsed component interface is validated against the schema. Missing required inputs or extra outputs produce descriptive errors.
 
