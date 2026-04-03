@@ -158,20 +158,44 @@ func populateComponentsFromHCL(
 		callSite, hasCallSite := callSiteMap[moduleName]
 
 		// For nested modules, try parsing call sites from the parent module's source dir
+		isNestedCallSite := false
+		var parentNode *componentNode
 		if !hasCallSite {
-			parentSource := findParentSourcePath(node, componentTree, resolvedSources)
-			if parentSource != "" {
-				parentCallSites := parseCallSitesCached(parentSource, callSiteCache)
-				if cs, ok := parentCallSites[moduleName]; ok {
-					callSite = cs
-					hasCallSite = true
+			parentNode = findParentComponentNode(componentTree, node.resourceName)
+			if parentNode != nil {
+				parentSource := resolvedSources["module."+parentNode.name]
+				if parentSource != "" {
+					parentCallSites := parseCallSitesCached(parentSource, callSiteCache)
+					if cs, ok := parentCallSites[moduleName]; ok {
+						callSite = cs
+						hasCallSite = true
+						isNestedCallSite = true
+					}
 				}
 			}
 		}
 
 		if populateInputs && hasCallSite && len(callSite.Arguments) > 0 {
 			evalVars := map[string]cty.Value{}
-			maps.Copy(evalVars, tfvars)
+			if isNestedCallSite && parentNode != nil {
+				// Nested call site: use the parent component's inputs as var.* scope
+				parentComp := findComponentByName(components, parentNode.resourceName)
+				if parentComp != nil && parentComp.Inputs != nil {
+					maps.Copy(evalVars, hclpkg.PulumiPropertyMapToCtyMap(parentComp.Inputs))
+				}
+				// Also merge parent module's variable defaults for any vars not set
+				parentSource := resolvedSources["module."+parentNode.name]
+				if parentSource != "" {
+					parentVars, _ := hclpkg.ParseModuleVariables(parentSource)
+					for _, v := range parentVars {
+						if _, alreadySet := evalVars[v.Name]; !alreadySet && v.Default != nil {
+							evalVars[v.Name] = *v.Default
+						}
+					}
+				}
+			} else {
+				maps.Copy(evalVars, tfvars)
+			}
 
 			var metaVars map[string]cty.Value
 			if node.key != "" {
@@ -200,7 +224,15 @@ func populateComponentsFromHCL(
 			}
 
 			// Evaluate and add local.* refs
-			evaluateAndAddLocals(tfSourceDir, evalCtx)
+			// For nested call sites, use parent module's locals instead of root locals
+			localsSourceDir := tfSourceDir
+			if isNestedCallSite && parentNode != nil {
+				parentSource := resolvedSources["module."+parentNode.name]
+				if parentSource != "" {
+					localsSourceDir = parentSource
+				}
+			}
+			evaluateAndAddLocals(localsSourceDir, evalCtx)
 
 			inputs := resource.PropertyMap{}
 			for argName, argExpr := range callSite.Arguments {
@@ -486,16 +518,6 @@ func (s scopedResourceAttrs) forModule(modulePath string) map[string]map[string]
 	return nil
 }
 
-// findParentSourcePath finds the resolved source path of a component's parent module.
-func findParentSourcePath(node *componentNode, tree []*componentNode, resolvedSources map[string]string) string {
-	// Walk the tree to find the parent node that contains this node as a child
-	parent := findParentComponentNode(tree, node.resourceName)
-	if parent == nil {
-		return ""
-	}
-	return resolvedSources["module."+parent.name]
-}
-
 // findParentComponentNode finds the parent of a node by searching for which node has it as a child.
 func findParentComponentNode(tree []*componentNode, childResourceName string) *componentNode {
 	for _, node := range tree {
@@ -697,6 +719,16 @@ func interfaceToCty(v interface{}) cty.Value {
 		}
 		return val2
 	}
+}
+
+// findComponentByName finds a PulumiResource by its Name field.
+func findComponentByName(components []PulumiResource, name string) *PulumiResource {
+	for i := range components {
+		if components[i].Name == name {
+			return &components[i]
+		}
+	}
+	return nil
 }
 
 // findComponentNode finds the component node by resource name in the tree.

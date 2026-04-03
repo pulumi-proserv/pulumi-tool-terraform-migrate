@@ -355,6 +355,50 @@ func TestBuildMetaArgContext_AlwaysSetsEach(t *testing.T) {
 	require.Equal(t, cty.StringVal("us-east-1"), vars2["each"].GetAttr("key"))
 }
 
+func TestPopulateComponentsFromHCL_NestedCallSiteUsesParentVars(t *testing.T) {
+	// Test that nested module call sites are evaluated with the parent module's
+	// var scope, not the root tfvars. The fixture has:
+	//   root: var.database_identifier = "mydb", passes it to parent as db_name
+	//   parent: var.db_name (from root), passes var.db_name to child as "name"
+	//   child: var.name (from parent)
+	//
+	// Key: the root has NO var called "db_name" — only "database_identifier".
+	// If the child call site is evaluated with root tfvars, var.db_name is missing.
+	// It must be evaluated with the parent's input scope where db_name="mydb".
+	components := []PulumiResource{
+		{PulumiResourceID: PulumiResourceID{Name: "parent", Type: "terraform:module/parent:Parent"}},
+		{PulumiResourceID: PulumiResourceID{Name: "child", Type: "terraform:module/child:Child"}},
+	}
+	tree := []*componentNode{
+		{
+			name: "parent", resourceName: "parent", typeToken: "terraform:module/parent:Parent",
+			modulePath: "module.parent",
+			children: []*componentNode{
+				{name: "child", resourceName: "child", typeToken: "terraform:module/child:Child",
+					modulePath: "module.parent.module.child"},
+			},
+		},
+	}
+
+	metadata, err := populateComponentsFromHCL(
+		components, tree, nil, nil,
+		"hcl/testdata/parent_with_nested_module", true, nil, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, metadata)
+
+	// Parent should get db_name="mydb" from root var.database_identifier
+	parentInputs := components[0].Inputs
+	require.NotNil(t, parentInputs, "parent should have inputs")
+	require.Equal(t, resource.NewStringProperty("mydb"), parentInputs["db_name"])
+
+	// Child should get name="mydb" — evaluated from parent's var.db_name, NOT root tfvars
+	childInputs := components[1].Inputs
+	require.NotNil(t, childInputs, "child should have inputs from parent var scope")
+	require.Contains(t, childInputs, resource.PropertyKey("name"))
+	require.Equal(t, resource.NewStringProperty("mydb"), childInputs["name"])
+}
+
 func TestInterfaceToCty(t *testing.T) {
 	tests := []struct {
 		name     string
