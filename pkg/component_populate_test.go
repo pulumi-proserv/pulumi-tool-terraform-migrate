@@ -340,7 +340,7 @@ func TestBuildChildModuleOutputs(t *testing.T) {
 		"db_subnet_group": {"id": cty.StringVal("sg-123")},
 	}
 
-	childOutputs := buildChildModuleOutputs(parent, moduleOutputValues, nil)
+	childOutputs := buildChildModuleOutputs(parent, moduleOutputValues, nil, nil)
 	require.NotNil(t, childOutputs)
 	require.Len(t, childOutputs, 2)
 	require.Equal(t, cty.StringVal("mydb.rds.amazonaws.com"), childOutputs["db_instance"]["address"])
@@ -362,7 +362,7 @@ func TestBuildChildModuleOutputs_EmptyChildWithSource(t *testing.T) {
 		"module.db_instance": "testdata/../hcl/testdata/pet_module", // has outputs: name, separator
 	}
 
-	result := buildChildModuleOutputs(parent, map[string]map[string]cty.Value{}, resolvedSources)
+	result := buildChildModuleOutputs(parent, map[string]map[string]cty.Value{}, resolvedSources, nil)
 	require.NotNil(t, result, "should have outputs even for empty children with known source")
 	require.Contains(t, result, "db_instance")
 	require.Contains(t, result["db_instance"], "name")
@@ -371,9 +371,30 @@ func TestBuildChildModuleOutputs_EmptyChildWithSource(t *testing.T) {
 	require.Equal(t, cty.StringVal(""), result["db_instance"]["name"])
 }
 
+func TestBuildChildModuleOutputs_CacheFallbackForMissingChild(t *testing.T) {
+	// When a child module doesn't appear in the component tree (e.g., data-source-only
+	// module with no managed resources), but IS in the module cache, its outputs
+	// should still be discovered.
+	parent := &componentNode{
+		name:         "rdsdb",
+		resourceName: "rdsdb",
+		modulePath:   "module.rdsdb",
+		// No children — db_instance has no managed resources in state
+	}
+	cachedModuleSources := map[string]string{
+		"module.rdsdb.module.db_instance": "testdata/../hcl/testdata/pet_module", // has outputs: name, separator
+	}
+
+	result := buildChildModuleOutputs(parent, map[string]map[string]cty.Value{}, nil, cachedModuleSources)
+	require.NotNil(t, result, "should discover child outputs from module cache")
+	require.Contains(t, result, "db_instance")
+	require.Contains(t, result["db_instance"], "name")
+	require.Contains(t, result["db_instance"], "separator")
+}
+
 func TestBuildChildModuleOutputs_NoChildren(t *testing.T) {
 	node := &componentNode{name: "vpc", resourceName: "vpc"}
-	result := buildChildModuleOutputs(node, nil, nil)
+	result := buildChildModuleOutputs(node, nil, nil, nil)
 	require.Nil(t, result)
 }
 

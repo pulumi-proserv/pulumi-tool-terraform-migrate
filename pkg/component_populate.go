@@ -279,7 +279,7 @@ func populateComponentsFromHCL(
 
 				// Build child module output cross-refs for parent modules
 			// (e.g., rdsdb needs module.db_instance.* outputs to evaluate its own outputs)
-			childOutputs := buildChildModuleOutputs(node, moduleOutputValues, resolvedSources)
+			childOutputs := buildChildModuleOutputs(node, moduleOutputValues, resolvedSources, cachedModuleSources)
 
 			outputEvalCtx := hclpkg.NewEvalContext(moduleVars, moduleResourceAttrs, childOutputs)
 
@@ -558,21 +558,23 @@ func parseCallSitesCached(dir string, cache map[string]map[string]*hclpkg.Module
 // For children not in moduleOutputValues (e.g., zero-instance or no managed resources),
 // the function parses output declarations from the child's resolved source and registers
 // them as empty strings so parent output expressions like module.child.name resolve.
+//
+// cachedModuleSources provides fallback resolution for children not in resolvedSources
+// (e.g., data-source-only modules that don't appear in the component tree).
 func buildChildModuleOutputs(
 	node *componentNode,
 	moduleOutputValues map[string]map[string]cty.Value,
 	resolvedSources map[string]string,
+	cachedModuleSources map[string]string,
 ) map[string]map[string]cty.Value {
-	if node.children == nil {
-		return nil
-	}
 	result := map[string]map[string]cty.Value{}
+
+	// Include outputs from children in the component tree
 	for _, child := range node.children {
 		if outputs, ok := moduleOutputValues[child.name]; ok {
 			result[child.name] = outputs
 			continue
 		}
-		// Child has no evaluated outputs — try parsing output declarations from source
 		sourcePath := resolvedSources["module."+child.name]
 		if sourcePath == "" {
 			continue
@@ -587,6 +589,34 @@ func buildChildModuleOutputs(
 		}
 		result[child.name] = emptyOutputs
 	}
+
+	// Also discover child modules from the module cache that don't appear in the
+	// component tree (e.g., data-source-only modules with no managed resources).
+	// The cache key pattern is "module.parent.module.child" for nested modules.
+	prefix := node.modulePath + ".module."
+	for cacheKey, dir := range cachedModuleSources {
+		if !strings.HasPrefix(cacheKey, prefix) {
+			continue
+		}
+		// Extract child module name from "module.parent.module.child"
+		childName := strings.TrimPrefix(cacheKey, prefix)
+		if strings.Contains(childName, ".") {
+			continue // skip deeper nesting (grandchildren)
+		}
+		if _, already := result[childName]; already {
+			continue
+		}
+		outputs, err := hclpkg.ParseModuleOutputs(dir)
+		if err != nil || len(outputs) == 0 {
+			continue
+		}
+		emptyOutputs := map[string]cty.Value{}
+		for _, o := range outputs {
+			emptyOutputs[o.Name] = cty.StringVal("")
+		}
+		result[childName] = emptyOutputs
+	}
+
 	if len(result) == 0 {
 		return nil
 	}
