@@ -186,3 +186,13 @@ Target: ~30-50 remaining warnings (down from 152), primarily from conditional re
 ## Diminishing Returns Note
 
 The current state (1181 inputs, 383 outputs, full typed metadata) provides excellent coverage for the code generation agent. These fixes improve output quality but have decreasing marginal value. After these two PRs, remaining warnings will be from genuinely unresolvable cases (resources not in state, complex expression patterns). Further work should focus on the agent consuming the output rather than perfecting the translator.
+
+---
+
+## Addendum: Default missing resource refs to empty values (added to PR 09i)
+
+When evaluating output expressions inside a module, if a resource type reference can't be found in the scoped attr map (because the resource was gated by `count = 0`), return `cty.EmptyTupleVal` instead of failing. This makes expressions like `aws_ebs_volume.this` resolve to `[]` rather than producing a warning with an empty string fallback.
+
+Implementation: After building the module-scoped eval context for output evaluation, scan the module's HCL source for all resource type names and register any that aren't in the attr map as empty tuple values. Alternatively, use a custom HCL `EvalContext` that intercepts unknown variable lookups and returns empty values for resource-like names.
+
+The simpler approach: in `evaluateLocals` and output eval, catch the "Unknown variable" error, check if the variable name looks like a resource type (contains `_`), and return `cty.EmptyTupleVal`. This avoids pre-scanning HCL source.
