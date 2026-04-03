@@ -641,7 +641,13 @@ func registerMissingResourceTypes(
 		// Construct an object with the same attributes as a real instance, but
 		// all values set to null strings. This lets expressions like
 		// aws_resource.this.id resolve to "" instead of panicking.
-		template := buildNullAttributeTemplate(instances)
+		// Pick any missing name to use for HCL-based attribute discovery
+		var sampleName string
+		for name := range names {
+			sampleName = name
+			break
+		}
+		template := buildNullAttributeTemplate(instances, sourcePath, resType, sampleName)
 		for name := range names {
 			if _, exists := instances[name]; !exists {
 				fmt.Fprintf(os.Stderr, "Note: %s.%s not in state for module.%s (likely count=0), defaulting to null\n", resType, name, moduleName)
@@ -662,7 +668,10 @@ func registerMissingResourceTypes(
 // buildNullAttributeTemplate creates a cty object with the same attribute names as
 // existing instances but all values set to null strings. Used for missing resource
 // instances (count=0) so attribute access resolves to "" instead of panicking.
-func buildNullAttributeTemplate(instances map[string]cty.Value) cty.Value {
+//
+// When no instances exist, falls back to parsing the HCL source to discover attributes.
+// If that also fails, uses a minimal template with common attrs (id, arn, tags, name).
+func buildNullAttributeTemplate(instances map[string]cty.Value, sourcePath, resourceType, resourceName string) cty.Value {
 	// Find any existing instance to use as a template
 	for _, inst := range instances {
 		if inst.Type().IsObjectType() {
@@ -676,6 +685,19 @@ func buildNullAttributeTemplate(instances map[string]cty.Value) cty.Value {
 		}
 		break
 	}
+
+	// No existing instances — try parsing the resource block from HCL
+	if sourcePath != "" && resourceType != "" && resourceName != "" {
+		attrNames, err := hclpkg.ParseResourceBlockAttrs(sourcePath, resourceType, resourceName)
+		if err == nil && len(attrNames) > 0 {
+			nullAttrs := map[string]cty.Value{}
+			for _, name := range attrNames {
+				nullAttrs[name] = cty.StringVal("")
+			}
+			return cty.ObjectVal(nullAttrs)
+		}
+	}
+
 	return cty.EmptyObjectVal
 }
 

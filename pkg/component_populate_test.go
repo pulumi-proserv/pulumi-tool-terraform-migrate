@@ -299,7 +299,7 @@ func TestBuildNullAttributeTemplate(t *testing.T) {
 			"vpc_id": cty.StringVal("vpc-456"),
 		}),
 	}
-	template := buildNullAttributeTemplate(instances)
+	template := buildNullAttributeTemplate(instances, "", "", "")
 	require.True(t, template.Type().IsObjectType())
 	require.Equal(t, cty.StringVal(""), template.GetAttr("id"))
 	require.Equal(t, cty.StringVal(""), template.GetAttr("arn"))
@@ -307,7 +307,22 @@ func TestBuildNullAttributeTemplate(t *testing.T) {
 }
 
 func TestBuildNullAttributeTemplate_NoInstances(t *testing.T) {
-	template := buildNullAttributeTemplate(map[string]cty.Value{})
+	// When no instances exist, buildNullAttributeTemplate should accept a sourcePath
+	// and resource type/name to discover attrs from HCL, rather than returning EmptyObjectVal.
+	template := buildNullAttributeTemplate(map[string]cty.Value{}, "hcl/testdata/pet_module", "random_pet", "this")
+	// Should NOT be EmptyObjectVal — that panics on attribute access
+	require.False(t, template.RawEquals(cty.EmptyObjectVal),
+		"should not use EmptyObjectVal — attribute access panics on it")
+	// Should have attrs discovered from the HCL resource block
+	require.True(t, template.Type().IsObjectType())
+	require.True(t, template.Type().HasAttribute("prefix"))
+	require.True(t, template.Type().HasAttribute("separator"))
+	require.True(t, template.Type().HasAttribute("length"))
+}
+
+func TestBuildNullAttributeTemplate_NoInstances_NoSource(t *testing.T) {
+	// When no source path is provided, falls back to EmptyObjectVal
+	template := buildNullAttributeTemplate(map[string]cty.Value{}, "", "", "")
 	require.True(t, template.RawEquals(cty.EmptyObjectVal))
 }
 
