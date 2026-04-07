@@ -12,6 +12,7 @@ For a comparison of migration approaches (state-first vs. code-first) and strate
 - [How the Translation Works](#how-the-translation-works)
 - [Planning a Migration](#planning-a-migration)
 - [Per-Workspace Migration Steps](#per-workspace-migration-steps)
+  - [Remote and OSS Modules](#remote-and-oss-modules)
 - [Operating During Migration](#operating-during-migration)
 - [Completing the Migration](#completing-the-migration)
 
@@ -293,9 +294,25 @@ Phase 4: Foundational Stacks (networking, DNS, IAM)
 
 ### Prerequisites
 
-- Terraform/OpenTofu initialized in the workspace (`terraform init` / `tofu init`)
+- **Terraform/OpenTofu initialized in the workspace** (`terraform init` / `tofu init`) — This is required so that the `.terraform/modules/` cache exists. The translation tool reads module sources from this cache rather than downloading them from the network. All remote modules (registry, git, S3, etc.) are resolved by `terraform init`, which authenticates, resolves versions, and downloads them into `.terraform/modules/`. Without this cache, the tool can still translate resources but cannot recover module inputs, outputs, or component schemas.
 - A Pulumi project created for the target (`pulumi new <template>`)
 - Access to the Terraform state (local file or remote backend)
+
+### Remote and OSS Modules
+
+Remote modules (Terraform Registry, git, S3, GCS, etc.) work automatically — no special handling is needed at translation time. The tool resolves them through the `.terraform/modules/` cache that `terraform init` creates:
+
+```
+terraform init   →   .terraform/modules/modules.json   (manifest)
+                      .terraform/modules/vpc/           (registry module)
+                      .terraform/modules/rds/           (git module)
+```
+
+The translation tool reads `modules.json` to find each module's cached directory, then parses the HCL within it to extract variable declarations, output definitions, and type information. This produces the `component-schemas.json` sidecar file with the full typed interface for every module — local and remote alike.
+
+**No network access is needed during translation.** The tool never downloads modules, authenticates to registries, or resolves version constraints. All of that was handled by `terraform init`.
+
+**For building Pulumi components from OSS modules**, the code generation agent should follow the targeted component provider approach (Option 3) from the [Migration Approach Comparison](./migration-approach-comparison.md#5-oss-module-strategies-worst-to-best) — building a Pulumi component scoped to the features actually used by your workspace, rather than wrapping the entire upstream module interface.
 
 ### Step 1: Translate State
 
