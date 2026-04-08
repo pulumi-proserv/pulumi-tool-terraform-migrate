@@ -3,38 +3,11 @@
     "acm": {
       "terraformPath": "module.acm",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/acm",
-      "resources": {
-        "aws_acm_certificate.this": {
-          "pulumiType": "aws:acm/certificate:Certificate",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:acm/certificate:Certificate::acm_this[0]",
-              "flatName": "acm_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_acm_certificate_validation.this": {
-          "pulumiType": "aws:acm/certificateValidation:CertificateValidation",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:acm/certificateValidation:CertificateValidation::acm_this[0]",
-              "flatName": "acm_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route53_record.validation": {
-          "pulumiType": "aws:route53/record:Record",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:route53/record:Record::acm_validation[0]",
-              "flatName": "acm_validation[0]",
-              "indexKey": "0"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:acm/certificate:Certificate::acm_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:acm/certificateValidation:CertificateValidation::acm_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:route53/record:Record::acm_validation[0]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -239,83 +212,18 @@
     "alb": {
       "terraformPath": "module.alb",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/alb",
-      "resources": {
-        "aws_lb.this": {
-          "pulumiType": "aws:lb/loadBalancer:LoadBalancer",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/loadBalancer:LoadBalancer::alb_this[0]",
-              "flatName": "alb_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_lb_listener.this": {
-          "pulumiType": "aws:lb/listener:Listener",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/listener:Listener::alb_this[\"my-http-https-redirect\"]",
-              "flatName": "alb_this[\"my-http-https-redirect\"]",
-              "indexKey": "my-http-https-redirect"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/listener:Listener::alb_this[\"my-https-listener\"]",
-              "flatName": "alb_this[\"my-https-listener\"]",
-              "indexKey": "my-https-listener"
-            }
-          ]
-        },
-        "aws_lb_listener_rule.this": {
-          "pulumiType": "aws:lb/listenerRule:ListenerRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/listenerRule:ListenerRule::alb_this[\"my-https-listener/myapp1-rule\"]",
-              "flatName": "alb_this[\"my-https-listener/myapp1-rule\"]",
-              "indexKey": "my-https-listener/myapp1-rule"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/listenerRule:ListenerRule::alb_this[\"my-https-listener/myapp2-rule\"]",
-              "flatName": "alb_this[\"my-https-listener/myapp2-rule\"]",
-              "indexKey": "my-https-listener/myapp2-rule"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/listenerRule:ListenerRule::alb_this[\"my-https-listener/myapp3-rule\"]",
-              "flatName": "alb_this[\"my-https-listener/myapp3-rule\"]",
-              "indexKey": "my-https-listener/myapp3-rule"
-            }
-          ]
-        },
-        "aws_lb_target_group.this": {
-          "pulumiType": "aws:lb/targetGroup:TargetGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/targetGroup:TargetGroup::alb_this[\"mytg1\"]",
-              "flatName": "alb_this[\"mytg1\"]",
-              "indexKey": "mytg1"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/targetGroup:TargetGroup::alb_this[\"mytg2\"]",
-              "flatName": "alb_this[\"mytg2\"]",
-              "indexKey": "mytg2"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:lb/targetGroup:TargetGroup::alb_this[\"mytg3\"]",
-              "flatName": "alb_this[\"mytg3\"]",
-              "indexKey": "mytg3"
-            }
-          ]
-        },
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::alb_this[0]",
-              "flatName": "alb_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:lb/loadBalancer:LoadBalancer::alb_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/listener:Listener::alb_this[\"my-http-https-redirect\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/listener:Listener::alb_this[\"my-https-listener\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/listenerRule:ListenerRule::alb_this[\"my-https-listener/myapp1-rule\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/listenerRule:ListenerRule::alb_this[\"my-https-listener/myapp2-rule\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/listenerRule:ListenerRule::alb_this[\"my-https-listener/myapp3-rule\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/targetGroup:TargetGroup::alb_this[\"mytg1\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/targetGroup:TargetGroup::alb_this[\"mytg2\"]",
+        "urn:pulumi:dev::dns-to-db::aws:lb/targetGroup:TargetGroup::alb_this[\"mytg3\"]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::alb_this[0]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -812,6 +720,72 @@
             "evaluatedValue": [
               {
                 "alpn_policy": null,
+                "arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:listener/app/sap-dev-alb/28aabe97ab7ea902/036c07320273a68f",
+                "certificate_arn": null,
+                "default_action": [
+                  {
+                    "authenticate_cognito": [],
+                    "authenticate_oidc": [],
+                    "fixed_response": [],
+                    "forward": [],
+                    "order": 1,
+                    "redirect": [
+                      {
+                        "host": "#{host}",
+                        "path": "/#{path}",
+                        "port": "443",
+                        "protocol": "HTTPS",
+                        "query": "#{query}",
+                        "status_code": "HTTP_301"
+                      }
+                    ],
+                    "target_group_arn": "",
+                    "type": "redirect"
+                  }
+                ],
+                "id": "arn:aws:elasticloadbalancing:us-east-1:616138583583:listener/app/sap-dev-alb/28aabe97ab7ea902/036c07320273a68f",
+                "load_balancer_arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:loadbalancer/app/sap-dev-alb/28aabe97ab7ea902",
+                "mutual_authentication": [],
+                "port": 80,
+                "protocol": "HTTP",
+                "region": "us-east-1",
+                "routing_http_request_x_amzn_mtls_clientcert_header_name": null,
+                "routing_http_request_x_amzn_mtls_clientcert_issuer_header_name": null,
+                "routing_http_request_x_amzn_mtls_clientcert_leaf_header_name": null,
+                "routing_http_request_x_amzn_mtls_clientcert_serial_number_header_name": null,
+                "routing_http_request_x_amzn_mtls_clientcert_subject_header_name": null,
+                "routing_http_request_x_amzn_mtls_clientcert_validity_header_name": null,
+                "routing_http_request_x_amzn_tls_cipher_suite_header_name": null,
+                "routing_http_request_x_amzn_tls_version_header_name": null,
+                "routing_http_response_access_control_allow_credentials_header_value": "",
+                "routing_http_response_access_control_allow_headers_header_value": "",
+                "routing_http_response_access_control_allow_methods_header_value": "",
+                "routing_http_response_access_control_allow_origin_header_value": "",
+                "routing_http_response_access_control_expose_headers_header_value": "",
+                "routing_http_response_access_control_max_age_header_value": "",
+                "routing_http_response_content_security_policy_header_value": "",
+                "routing_http_response_server_enabled": true,
+                "routing_http_response_strict_transport_security_header_value": "",
+                "routing_http_response_x_content_type_options_header_value": "",
+                "routing_http_response_x_frame_options_header_value": "",
+                "ssl_policy": "",
+                "tags": {
+                  "Owner": "anton",
+                  "environment": "dev",
+                  "owners": "sap",
+                  "terraform-aws-modules": "alb"
+                },
+                "tags_all": {
+                  "Owner": "anton",
+                  "environment": "dev",
+                  "owners": "sap",
+                  "terraform-aws-modules": "alb"
+                },
+                "tcp_idle_timeout_seconds": null,
+                "timeouts": null
+              },
+              {
+                "alpn_policy": null,
                 "arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:listener/app/sap-dev-alb/28aabe97ab7ea902/56c35e744fcd8beb",
                 "certificate_arn": "arn:aws:acm:us-east-1:616138583583:certificate/587a6e95-a6a4-447f-9716-ab32e4d3ebd1",
                 "default_action": [
@@ -865,72 +839,6 @@
                 "routing_http_response_x_content_type_options_header_value": "",
                 "routing_http_response_x_frame_options_header_value": "",
                 "ssl_policy": "ELBSecurityPolicy-TLS13-1-2-Res-2021-06",
-                "tags": {
-                  "Owner": "anton",
-                  "environment": "dev",
-                  "owners": "sap",
-                  "terraform-aws-modules": "alb"
-                },
-                "tags_all": {
-                  "Owner": "anton",
-                  "environment": "dev",
-                  "owners": "sap",
-                  "terraform-aws-modules": "alb"
-                },
-                "tcp_idle_timeout_seconds": null,
-                "timeouts": null
-              },
-              {
-                "alpn_policy": null,
-                "arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:listener/app/sap-dev-alb/28aabe97ab7ea902/036c07320273a68f",
-                "certificate_arn": null,
-                "default_action": [
-                  {
-                    "authenticate_cognito": [],
-                    "authenticate_oidc": [],
-                    "fixed_response": [],
-                    "forward": [],
-                    "order": 1,
-                    "redirect": [
-                      {
-                        "host": "#{host}",
-                        "path": "/#{path}",
-                        "port": "443",
-                        "protocol": "HTTPS",
-                        "query": "#{query}",
-                        "status_code": "HTTP_301"
-                      }
-                    ],
-                    "target_group_arn": "",
-                    "type": "redirect"
-                  }
-                ],
-                "id": "arn:aws:elasticloadbalancing:us-east-1:616138583583:listener/app/sap-dev-alb/28aabe97ab7ea902/036c07320273a68f",
-                "load_balancer_arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:loadbalancer/app/sap-dev-alb/28aabe97ab7ea902",
-                "mutual_authentication": [],
-                "port": 80,
-                "protocol": "HTTP",
-                "region": "us-east-1",
-                "routing_http_request_x_amzn_mtls_clientcert_header_name": null,
-                "routing_http_request_x_amzn_mtls_clientcert_issuer_header_name": null,
-                "routing_http_request_x_amzn_mtls_clientcert_leaf_header_name": null,
-                "routing_http_request_x_amzn_mtls_clientcert_serial_number_header_name": null,
-                "routing_http_request_x_amzn_mtls_clientcert_subject_header_name": null,
-                "routing_http_request_x_amzn_mtls_clientcert_validity_header_name": null,
-                "routing_http_request_x_amzn_tls_cipher_suite_header_name": null,
-                "routing_http_request_x_amzn_tls_version_header_name": null,
-                "routing_http_response_access_control_allow_credentials_header_value": "",
-                "routing_http_response_access_control_allow_headers_header_value": "",
-                "routing_http_response_access_control_allow_methods_header_value": "",
-                "routing_http_response_access_control_allow_origin_header_value": "",
-                "routing_http_response_access_control_expose_headers_header_value": "",
-                "routing_http_response_access_control_max_age_header_value": "",
-                "routing_http_response_content_security_policy_header_value": "",
-                "routing_http_response_server_enabled": true,
-                "routing_http_response_strict_transport_security_header_value": "",
-                "routing_http_response_x_content_type_options_header_value": "",
-                "routing_http_response_x_frame_options_header_value": "",
-                "ssl_policy": "",
                 "tags": {
                   "Owner": "anton",
                   "environment": "dev",
@@ -1151,93 +1059,6 @@
             "description": "Map of target groups created and their attributes",
             "evaluatedValue": [
               {
-                "arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:targetgroup/mytg2-2026011516035419700000000c/e0a83b28ab17c262",
-                "arn_suffix": "targetgroup/mytg2-2026011516035419700000000c/e0a83b28ab17c262",
-                "connection_termination": null,
-                "deregistration_delay": "10",
-                "health_check": [
-                  {
-                    "enabled": true,
-                    "healthy_threshold": 3,
-                    "interval": 30,
-                    "matcher": "200-399",
-                    "path": "/app2/index.html",
-                    "port": "traffic-port",
-                    "protocol": "HTTP",
-                    "timeout": 6,
-                    "unhealthy_threshold": 3
-                  }
-                ],
-                "id": "arn:aws:elasticloadbalancing:us-east-1:616138583583:targetgroup/mytg2-2026011516035419700000000c/e0a83b28ab17c262",
-                "ip_address_type": "ipv4",
-                "lambda_multi_value_headers_enabled": false,
-                "load_balancer_arns": [
-                  "arn:aws:elasticloadbalancing:us-east-1:616138583583:loadbalancer/app/sap-dev-alb/28aabe97ab7ea902"
-                ],
-                "load_balancing_algorithm_type": "round_robin",
-                "load_balancing_anomaly_mitigation": "off",
-                "load_balancing_cross_zone_enabled": "false",
-                "name": "mytg2-2026011516035419700000000c",
-                "name_prefix": "mytg2-",
-                "port": 80,
-                "preserve_client_ip": null,
-                "protocol": "HTTP",
-                "protocol_version": "HTTP1",
-                "proxy_protocol_v2": false,
-                "region": "us-east-1",
-                "slow_start": 0,
-                "stickiness": [
-                  {
-                    "cookie_duration": 86400,
-                    "cookie_name": "",
-                    "enabled": false,
-                    "type": "lb_cookie"
-                  }
-                ],
-                "tags": {
-                  "Owner": "anton",
-                  "environment": "dev",
-                  "owners": "sap",
-                  "terraform-aws-modules": "alb"
-                },
-                "tags_all": {
-                  "Owner": "anton",
-                  "environment": "dev",
-                  "owners": "sap",
-                  "terraform-aws-modules": "alb"
-                },
-                "target_failover": [
-                  {
-                    "on_deregistration": null,
-                    "on_unhealthy": null
-                  }
-                ],
-                "target_group_health": [
-                  {
-                    "dns_failover": [
-                      {
-                        "minimum_healthy_targets_count": "1",
-                        "minimum_healthy_targets_percentage": "off"
-                      }
-                    ],
-                    "unhealthy_state_routing": [
-                      {
-                        "minimum_healthy_targets_count": 1,
-                        "minimum_healthy_targets_percentage": "off"
-                      }
-                    ]
-                  }
-                ],
-                "target_health_state": [
-                  {
-                    "enable_unhealthy_connection_termination": null,
-                    "unhealthy_draining_interval": null
-                  }
-                ],
-                "target_type": "instance",
-                "vpc_id": "vpc-0df7e7a61196cf6dd"
-              },
-              {
                 "arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:targetgroup/mytg3-2026011516035485910000000d/e632a31d7690829c",
                 "arn_suffix": "targetgroup/mytg3-2026011516035485910000000d/e632a31d7690829c",
                 "connection_termination": null,
@@ -1410,6 +1231,93 @@
                 ],
                 "target_type": "instance",
                 "vpc_id": "vpc-0df7e7a61196cf6dd"
+              },
+              {
+                "arn": "arn:aws:elasticloadbalancing:us-east-1:616138583583:targetgroup/mytg2-2026011516035419700000000c/e0a83b28ab17c262",
+                "arn_suffix": "targetgroup/mytg2-2026011516035419700000000c/e0a83b28ab17c262",
+                "connection_termination": null,
+                "deregistration_delay": "10",
+                "health_check": [
+                  {
+                    "enabled": true,
+                    "healthy_threshold": 3,
+                    "interval": 30,
+                    "matcher": "200-399",
+                    "path": "/app2/index.html",
+                    "port": "traffic-port",
+                    "protocol": "HTTP",
+                    "timeout": 6,
+                    "unhealthy_threshold": 3
+                  }
+                ],
+                "id": "arn:aws:elasticloadbalancing:us-east-1:616138583583:targetgroup/mytg2-2026011516035419700000000c/e0a83b28ab17c262",
+                "ip_address_type": "ipv4",
+                "lambda_multi_value_headers_enabled": false,
+                "load_balancer_arns": [
+                  "arn:aws:elasticloadbalancing:us-east-1:616138583583:loadbalancer/app/sap-dev-alb/28aabe97ab7ea902"
+                ],
+                "load_balancing_algorithm_type": "round_robin",
+                "load_balancing_anomaly_mitigation": "off",
+                "load_balancing_cross_zone_enabled": "false",
+                "name": "mytg2-2026011516035419700000000c",
+                "name_prefix": "mytg2-",
+                "port": 80,
+                "preserve_client_ip": null,
+                "protocol": "HTTP",
+                "protocol_version": "HTTP1",
+                "proxy_protocol_v2": false,
+                "region": "us-east-1",
+                "slow_start": 0,
+                "stickiness": [
+                  {
+                    "cookie_duration": 86400,
+                    "cookie_name": "",
+                    "enabled": false,
+                    "type": "lb_cookie"
+                  }
+                ],
+                "tags": {
+                  "Owner": "anton",
+                  "environment": "dev",
+                  "owners": "sap",
+                  "terraform-aws-modules": "alb"
+                },
+                "tags_all": {
+                  "Owner": "anton",
+                  "environment": "dev",
+                  "owners": "sap",
+                  "terraform-aws-modules": "alb"
+                },
+                "target_failover": [
+                  {
+                    "on_deregistration": null,
+                    "on_unhealthy": null
+                  }
+                ],
+                "target_group_health": [
+                  {
+                    "dns_failover": [
+                      {
+                        "minimum_healthy_targets_count": "1",
+                        "minimum_healthy_targets_percentage": "off"
+                      }
+                    ],
+                    "unhealthy_state_routing": [
+                      {
+                        "minimum_healthy_targets_count": 1,
+                        "minimum_healthy_targets_percentage": "off"
+                      }
+                    ]
+                  }
+                ],
+                "target_health_state": [
+                  {
+                    "enable_unhealthy_connection_termination": null,
+                    "unhealthy_draining_interval": null
+                  }
+                ],
+                "target_type": "instance",
+                "vpc_id": "vpc-0df7e7a61196cf6dd"
               }
             ]
           },
@@ -1435,43 +1343,12 @@
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_private_app1",
       "indexKey": "0",
       "indexType": "count",
-      "resources": {
-        "aws_instance.this": {
-          "pulumiType": "aws:ec2/instance:Instance",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app1[\"0\"]_this[0]",
-              "flatName": "ec2_private_app1[\"0\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app1[\"0\"]_this[0]",
-              "flatName": "ec2_private_app1[\"0\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"0\"]_this[\"ipv4_default\"]",
-              "flatName": "ec2_private_app1[\"0\"]_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"0\"]_this[\"ipv6_default\"]",
-              "flatName": "ec2_private_app1[\"0\"]_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app1[\"0\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app1[\"0\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"0\"]_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"0\"]_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -2107,43 +1984,12 @@
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_private_app1",
       "indexKey": "1",
       "indexType": "count",
-      "resources": {
-        "aws_instance.this": {
-          "pulumiType": "aws:ec2/instance:Instance",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app1[\"1\"]_this[0]",
-              "flatName": "ec2_private_app1[\"1\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app1[\"1\"]_this[0]",
-              "flatName": "ec2_private_app1[\"1\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"1\"]_this[\"ipv4_default\"]",
-              "flatName": "ec2_private_app1[\"1\"]_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"1\"]_this[\"ipv6_default\"]",
-              "flatName": "ec2_private_app1[\"1\"]_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app1[\"1\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app1[\"1\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"1\"]_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app1[\"1\"]_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -2779,43 +2625,12 @@
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_private_app2",
       "indexKey": "0",
       "indexType": "count",
-      "resources": {
-        "aws_instance.this": {
-          "pulumiType": "aws:ec2/instance:Instance",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app2[\"0\"]_this[0]",
-              "flatName": "ec2_private_app2[\"0\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app2[\"0\"]_this[0]",
-              "flatName": "ec2_private_app2[\"0\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"0\"]_this[\"ipv4_default\"]",
-              "flatName": "ec2_private_app2[\"0\"]_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"0\"]_this[\"ipv6_default\"]",
-              "flatName": "ec2_private_app2[\"0\"]_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app2[\"0\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app2[\"0\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"0\"]_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"0\"]_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -3451,43 +3266,12 @@
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_private_app2",
       "indexKey": "1",
       "indexType": "count",
-      "resources": {
-        "aws_instance.this": {
-          "pulumiType": "aws:ec2/instance:Instance",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app2[\"1\"]_this[0]",
-              "flatName": "ec2_private_app2[\"1\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app2[\"1\"]_this[0]",
-              "flatName": "ec2_private_app2[\"1\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"1\"]_this[\"ipv4_default\"]",
-              "flatName": "ec2_private_app2[\"1\"]_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"1\"]_this[\"ipv6_default\"]",
-              "flatName": "ec2_private_app2[\"1\"]_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_private_app2[\"1\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app2[\"1\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"1\"]_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app2[\"1\"]_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -4123,33 +3907,11 @@
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_private_app3",
       "indexKey": "0",
       "indexType": "count",
-      "resources": {
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app3[\"0\"]_this[0]",
-              "flatName": "ec2_private_app3[\"0\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"0\"]_this[\"ipv4_default\"]",
-              "flatName": "ec2_private_app3[\"0\"]_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"0\"]_this[\"ipv6_default\"]",
-              "flatName": "ec2_private_app3[\"0\"]_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app3[\"0\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"0\"]_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"0\"]_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -4785,33 +4547,11 @@
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_private_app3",
       "indexKey": "1",
       "indexType": "count",
-      "resources": {
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app3[\"1\"]_this[0]",
-              "flatName": "ec2_private_app3[\"1\"]_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"1\"]_this[\"ipv4_default\"]",
-              "flatName": "ec2_private_app3[\"1\"]_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"1\"]_this[\"ipv6_default\"]",
-              "flatName": "ec2_private_app3[\"1\"]_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_private_app3[\"1\"]_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"1\"]_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_private_app3[\"1\"]_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -5445,43 +5185,12 @@
     "ec2_public": {
       "terraformPath": "module.ec2_public",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/ec2_public",
-      "resources": {
-        "aws_instance.this": {
-          "pulumiType": "aws:ec2/instance:Instance",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_public_this[0]",
-              "flatName": "ec2_public_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group.this": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_public_this[0]",
-              "flatName": "ec2_public_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_vpc_security_group_egress_rule.this": {
-          "pulumiType": "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_public_this[\"ipv4_default\"]",
-              "flatName": "ec2_public_this[\"ipv4_default\"]",
-              "indexKey": "ipv4_default"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_public_this[\"ipv6_default\"]",
-              "flatName": "ec2_public_this[\"ipv6_default\"]",
-              "indexKey": "ipv6_default"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/instance:Instance::ec2_public_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::ec2_public_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_public_this[\"ipv4_default\"]",
+        "urn:pulumi:dev::dns-to-db::aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule::ec2_public_this[\"ipv6_default\"]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -6115,53 +5824,13 @@
     "loadbalancer_sg": {
       "terraformPath": "module.loadbalancer_sg",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/loadbalancer_sg",
-      "resources": {
-        "aws_security_group.this_name_prefix": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::loadbalancer_sg_this_name_prefix[0]",
-              "flatName": "loadbalancer_sg_this_name_prefix[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.egress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_egress_rules[0]",
-              "flatName": "loadbalancer_sg_egress_rules[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.ingress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_ingress_rules[0]",
-              "flatName": "loadbalancer_sg_ingress_rules[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_ingress_rules[1]",
-              "flatName": "loadbalancer_sg_ingress_rules[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_security_group_rule.ingress_with_cidr_blocks": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_ingress_with_cidr_blocks[0]",
-              "flatName": "loadbalancer_sg_ingress_with_cidr_blocks[0]",
-              "indexKey": "0"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::loadbalancer_sg_this_name_prefix[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_egress_rules[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_ingress_rules[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_ingress_rules[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::loadbalancer_sg_ingress_with_cidr_blocks[0]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -8389,48 +8058,13 @@
     "private_sg": {
       "terraformPath": "module.private_sg",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/private_sg",
-      "resources": {
-        "aws_security_group.this_name_prefix": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::private_sg_this_name_prefix[0]",
-              "flatName": "private_sg_this_name_prefix[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.egress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_egress_rules[0]",
-              "flatName": "private_sg_egress_rules[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.ingress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_ingress_rules[0]",
-              "flatName": "private_sg_ingress_rules[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_ingress_rules[1]",
-              "flatName": "private_sg_ingress_rules[1]",
-              "indexKey": "1"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_ingress_rules[2]",
-              "flatName": "private_sg_ingress_rules[2]",
-              "indexKey": "2"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::private_sg_this_name_prefix[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_egress_rules[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_ingress_rules[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_ingress_rules[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::private_sg_ingress_rules[2]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -10650,38 +10284,11 @@
     "public_bastion_sg": {
       "terraformPath": "module.public_bastion_sg",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/public_bastion_sg",
-      "resources": {
-        "aws_security_group.this_name_prefix": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::public_bastion_sg_this_name_prefix[0]",
-              "flatName": "public_bastion_sg_this_name_prefix[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.egress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::public_bastion_sg_egress_rules[0]",
-              "flatName": "public_bastion_sg_egress_rules[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.ingress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::public_bastion_sg_ingress_rules[0]",
-              "flatName": "public_bastion_sg_ingress_rules[0]",
-              "indexKey": "0"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::public_bastion_sg_this_name_prefix[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::public_bastion_sg_egress_rules[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::public_bastion_sg_ingress_rules[0]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -12899,7 +12506,7 @@
     "rdsdb": {
       "terraformPath": "module.rdsdb",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/rdsdb",
-      "resources": {},
+      "resources": null,
       "interface": {
         "inputs": [
           {
@@ -13648,18 +13255,9 @@
         "db_option_group": {
           "terraformPath": "module.rdsdb.module.db_option_group",
           "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/rdsdb/modules/db_option_group",
-          "resources": {
-            "aws_db_option_group.this": {
-              "pulumiType": "aws:rds/optionGroup:OptionGroup",
-              "instances": [
-                {
-                  "urn": "urn:pulumi:dev::dns-to-db::aws:rds/optionGroup:OptionGroup::rdsdb_db_option_group_this[0]",
-                  "flatName": "rdsdb_db_option_group_this[0]",
-                  "indexKey": "0"
-                }
-              ]
-            }
-          },
+          "resources": [
+            "urn:pulumi:dev::dns-to-db::aws:rds/optionGroup:OptionGroup::rdsdb_db_option_group_this[0]"
+          ],
           "interface": {
             "inputs": [
               {
@@ -13750,18 +13348,9 @@
         "db_parameter_group": {
           "terraformPath": "module.rdsdb.module.db_parameter_group",
           "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/rdsdb/modules/db_parameter_group",
-          "resources": {
-            "aws_db_parameter_group.this": {
-              "pulumiType": "aws:rds/parameterGroup:ParameterGroup",
-              "instances": [
-                {
-                  "urn": "urn:pulumi:dev::dns-to-db::aws:rds/parameterGroup:ParameterGroup::rdsdb_db_parameter_group_this[0]",
-                  "flatName": "rdsdb_db_parameter_group_this[0]",
-                  "indexKey": "0"
-                }
-              ]
-            }
-          },
+          "resources": [
+            "urn:pulumi:dev::dns-to-db::aws:rds/parameterGroup:ParameterGroup::rdsdb_db_parameter_group_this[0]"
+          ],
           "interface": {
             "inputs": [
               {
@@ -13851,18 +13440,9 @@
         "db_subnet_group": {
           "terraformPath": "module.rdsdb.module.db_subnet_group",
           "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/rdsdb/modules/db_subnet_group",
-          "resources": {
-            "aws_db_subnet_group.this": {
-              "pulumiType": "aws:rds/subnetGroup:SubnetGroup",
-              "instances": [
-                {
-                  "urn": "urn:pulumi:dev::dns-to-db::aws:rds/subnetGroup:SubnetGroup::rdsdb_db_subnet_group_this[0]",
-                  "flatName": "rdsdb_db_subnet_group_this[0]",
-                  "indexKey": "0"
-                }
-              ]
-            }
-          },
+          "resources": [
+            "urn:pulumi:dev::dns-to-db::aws:rds/subnetGroup:SubnetGroup::rdsdb_db_subnet_group_this[0]"
+          ],
           "interface": {
             "inputs": [
               {
@@ -13939,38 +13519,11 @@
     "rdsdb_sg": {
       "terraformPath": "module.rdsdb_sg",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/rdsdb_sg",
-      "resources": {
-        "aws_security_group.this_name_prefix": {
-          "pulumiType": "aws:ec2/securityGroup:SecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::rdsdb_sg_this_name_prefix[0]",
-              "flatName": "rdsdb_sg_this_name_prefix[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.egress_rules": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::rdsdb_sg_egress_rules[0]",
-              "flatName": "rdsdb_sg_egress_rules[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_security_group_rule.ingress_with_cidr_blocks": {
-          "pulumiType": "aws:ec2/securityGroupRule:SecurityGroupRule",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::rdsdb_sg_ingress_with_cidr_blocks[0]",
-              "flatName": "rdsdb_sg_ingress_with_cidr_blocks[0]",
-              "indexKey": "0"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroup:SecurityGroup::rdsdb_sg_this_name_prefix[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::rdsdb_sg_egress_rules[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/securityGroupRule:SecurityGroupRule::rdsdb_sg_ingress_with_cidr_blocks[0]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -16191,228 +15744,33 @@
     "vpc": {
       "terraformPath": "module.vpc",
       "source": "pkg/testdata/tf_dns_to_db/.terraform/modules/vpc",
-      "resources": {
-        "aws_db_subnet_group.database": {
-          "pulumiType": "aws:rds/subnetGroup:SubnetGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:rds/subnetGroup:SubnetGroup::vpc_database[0]",
-              "flatName": "vpc_database[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_default_network_acl.this": {
-          "pulumiType": "aws:ec2/defaultNetworkAcl:DefaultNetworkAcl",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/defaultNetworkAcl:DefaultNetworkAcl::vpc_this[0]",
-              "flatName": "vpc_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_default_route_table.default": {
-          "pulumiType": "aws:ec2/defaultRouteTable:DefaultRouteTable",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/defaultRouteTable:DefaultRouteTable::vpc_default[0]",
-              "flatName": "vpc_default[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_default_security_group.this": {
-          "pulumiType": "aws:ec2/defaultSecurityGroup:DefaultSecurityGroup",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/defaultSecurityGroup:DefaultSecurityGroup::vpc_this[0]",
-              "flatName": "vpc_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_eip.nat": {
-          "pulumiType": "aws:ec2/eip:Eip",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/eip:Eip::vpc_nat[0]",
-              "flatName": "vpc_nat[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_internet_gateway.this": {
-          "pulumiType": "aws:ec2/internetGateway:InternetGateway",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/internetGateway:InternetGateway::vpc_this[0]",
-              "flatName": "vpc_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_nat_gateway.this": {
-          "pulumiType": "aws:ec2/natGateway:NatGateway",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/natGateway:NatGateway::vpc_this[0]",
-              "flatName": "vpc_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route.private_nat_gateway": {
-          "pulumiType": "aws:ec2/route:Route",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/route:Route::vpc_private_nat_gateway[0]",
-              "flatName": "vpc_private_nat_gateway[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route.public_internet_gateway": {
-          "pulumiType": "aws:ec2/route:Route",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/route:Route::vpc_public_internet_gateway[0]",
-              "flatName": "vpc_public_internet_gateway[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route_table.database": {
-          "pulumiType": "aws:ec2/routeTable:RouteTable",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTable:RouteTable::vpc_database[0]",
-              "flatName": "vpc_database[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route_table.private": {
-          "pulumiType": "aws:ec2/routeTable:RouteTable",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTable:RouteTable::vpc_private[0]",
-              "flatName": "vpc_private[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route_table.public": {
-          "pulumiType": "aws:ec2/routeTable:RouteTable",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTable:RouteTable::vpc_public[0]",
-              "flatName": "vpc_public[0]",
-              "indexKey": "0"
-            }
-          ]
-        },
-        "aws_route_table_association.database": {
-          "pulumiType": "aws:ec2/routeTableAssociation:RouteTableAssociation",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_database[0]",
-              "flatName": "vpc_database[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_database[1]",
-              "flatName": "vpc_database[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_route_table_association.private": {
-          "pulumiType": "aws:ec2/routeTableAssociation:RouteTableAssociation",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_private[0]",
-              "flatName": "vpc_private[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_private[1]",
-              "flatName": "vpc_private[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_route_table_association.public": {
-          "pulumiType": "aws:ec2/routeTableAssociation:RouteTableAssociation",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_public[0]",
-              "flatName": "vpc_public[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_public[1]",
-              "flatName": "vpc_public[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_subnet.database": {
-          "pulumiType": "aws:ec2/subnet:Subnet",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_database[0]",
-              "flatName": "vpc_database[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_database[1]",
-              "flatName": "vpc_database[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_subnet.private": {
-          "pulumiType": "aws:ec2/subnet:Subnet",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_private[0]",
-              "flatName": "vpc_private[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_private[1]",
-              "flatName": "vpc_private[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_subnet.public": {
-          "pulumiType": "aws:ec2/subnet:Subnet",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_public[0]",
-              "flatName": "vpc_public[0]",
-              "indexKey": "0"
-            },
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_public[1]",
-              "flatName": "vpc_public[1]",
-              "indexKey": "1"
-            }
-          ]
-        },
-        "aws_vpc.this": {
-          "pulumiType": "aws:ec2/vpc:Vpc",
-          "instances": [
-            {
-              "urn": "urn:pulumi:dev::dns-to-db::aws:ec2/vpc:Vpc::vpc_this[0]",
-              "flatName": "vpc_this[0]",
-              "indexKey": "0"
-            }
-          ]
-        }
-      },
+      "resources": [
+        "urn:pulumi:dev::dns-to-db::aws:rds/subnetGroup:SubnetGroup::vpc_database[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/defaultNetworkAcl:DefaultNetworkAcl::vpc_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/defaultRouteTable:DefaultRouteTable::vpc_default[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/defaultSecurityGroup:DefaultSecurityGroup::vpc_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/eip:Eip::vpc_nat[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/internetGateway:InternetGateway::vpc_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/natGateway:NatGateway::vpc_this[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/route:Route::vpc_private_nat_gateway[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/route:Route::vpc_public_internet_gateway[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTable:RouteTable::vpc_database[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTable:RouteTable::vpc_private[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTable:RouteTable::vpc_public[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_database[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_database[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_private[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_private[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_public[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/routeTableAssociation:RouteTableAssociation::vpc_public[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_database[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_database[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_private[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_private[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_public[0]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/subnet:Subnet::vpc_public[1]",
+        "urn:pulumi:dev::dns-to-db::aws:ec2/vpc:Vpc::vpc_this[0]"
+      ],
       "interface": {
         "inputs": [
           {
@@ -18532,8 +17890,8 @@
             "name": "database_route_table_association_ids",
             "description": "List of IDs of the database route table association",
             "evaluatedValue": [
-              "rtbassoc-02ed0e4b1babd7acd",
-              "rtbassoc-002d023cbad72b51d"
+              "rtbassoc-002d023cbad72b51d",
+              "rtbassoc-02ed0e4b1babd7acd"
             ]
           },
           {
