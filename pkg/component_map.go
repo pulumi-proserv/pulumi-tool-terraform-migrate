@@ -38,7 +38,6 @@ type ComponentMap struct {
 type ModuleMapEntry struct {
 	TerraformPath string                       `json:"terraformPath"`
 	Source        string                       `json:"source,omitempty"`
-	SuggestedType string                       `json:"suggestedType"`
 	IndexKey      string                       `json:"indexKey,omitempty"`
 	IndexType     string                       `json:"indexType,omitempty"`
 	Resources     map[string]*ResourceMapEntry `json:"resources"`
@@ -56,9 +55,8 @@ type ResourceMapEntry struct {
 
 // ResourceInstance describes a single instance of a resource within a module.
 type ResourceInstance struct {
-	FlatName  string `json:"flatName"`
-	ShortName string `json:"shortName"`
-	IndexKey  string `json:"indexKey,omitempty"`
+	FlatName string `json:"flatName"`
+	IndexKey string `json:"indexKey,omitempty"`
 }
 
 // ModuleInterface describes the inputs and outputs of a component.
@@ -136,7 +134,6 @@ func buildModuleMapEntry(
 ) *ModuleMapEntry {
 	entry := &ModuleMapEntry{
 		TerraformPath: node.modulePath,
-		SuggestedType: node.typeToken,
 		Resources:     map[string]*ResourceMapEntry{},
 		Modules:       map[string]*ModuleMapEntry{},
 	}
@@ -191,9 +188,8 @@ func buildModuleMapEntry(
 		indexKey := extractResourceIndexKey(res.Address, res.Type, res.Name)
 
 		existing.Instances = append(existing.Instances, ResourceInstance{
-			FlatName:  PulumiNameFromTerraformAddress(res.Address, res.Type),
-			ShortName: shortResourceName(res.Address, res.Type),
-			IndexKey:  indexKey,
+			FlatName: PulumiNameFromTerraformAddress(res.Address, res.Type),
+			IndexKey: indexKey,
 		})
 	}
 
@@ -327,18 +323,6 @@ func WriteComponentMap(cm *ComponentMap, path string) error {
 		return fmt.Errorf("writing component map: %w", err)
 	}
 	return nil
-}
-
-// shortResourceName extracts only the resource name part (after the type) from a Terraform address.
-// Example: "module.vpc.aws_subnet.this" with type "aws_subnet" returns "this".
-func shortResourceName(address, resourceType string) string {
-	parts := strings.Split(address, ".")
-	for i := 0; i < len(parts); i++ {
-		if parts[i] == resourceType {
-			return strings.Join(parts[i+1:], "_")
-		}
-	}
-	return address
 }
 
 // extractResourceIndexKey extracts the instance index key from a fully qualified
