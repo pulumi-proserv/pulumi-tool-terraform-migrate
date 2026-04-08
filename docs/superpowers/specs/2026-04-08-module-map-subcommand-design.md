@@ -303,6 +303,8 @@ Remove from `TranslateAndWriteState`:
 
 `stack` produces only `pulumi-state.json` + optional `required-plugins.json`.
 
+**Note:** Since the implementation branches from `main` (not the feature stack), these removals are not needed — the component-map code was never merged to main. This section documents the intent for completeness.
+
 ---
 
 ## Part 7: `refactor-to-components` Skill
@@ -368,34 +370,39 @@ When user maps a module to an existing component (e.g., `@pulumi/awsx:ec2:Vpc`):
 
 ## Part 8: Codebase Changes
 
-### Removed
+### Files NOT carried over from feature stack
 
-- `pkg/hcl/evaluator.go` — replaced by `Context.Eval()` scope
-- `pkg/hcl/parser.go` — replaced by `configs.Config` (ModuleCalls, Variables, Outputs)
-- `pkg/hcl/discovery.go` — replaced by `configload.Loader` (module source resolution from cache)
-- `pkg/hcl/convert.go` — `CtyValueToPulumiPropertyValue` moves to `pkg/module_map.go`; `PulumiPropertyMapToCtyMap` no longer needed
-- `pkg/component_populate.go` — entire custom orchestration
-- `pkg/component_metadata.go` — interface data now built directly from `configs.Config` in module map builder
-- `pkg/component_schema.go` — schema validation moves to `refactor-to-components` skill
-- `pkg/component_map.go` — renamed/rewritten as `pkg/module_map.go`
-- Associated test files: `pkg/component_populate_test.go`, `pkg/component_metadata_test.go`, `pkg/component_schema_test.go`, `pkg/hcl/evaluator_test.go`, `pkg/hcl/parser_test.go`, `pkg/hcl/discovery_test.go`, `pkg/hcl/convert_test.go`
-- Note: tests for `CtyValueToPulumiPropertyValue` (currently in `pkg/hcl/convert_test.go`) should be migrated to `pkg/module_map_test.go` alongside the moved function
+These files exist on `feat/mc-25-component-map-sidecar` but are intentionally not brought to the new branch. They are replaced by the new implementation:
 
-### Modified
+| Feature stack file | Replaced by |
+|-------------------|-------------|
+| `pkg/hcl/evaluator.go` | `pkg/tofu_eval.go` (Context.Eval) |
+| `pkg/hcl/parser.go` | `configs.Config` from fork |
+| `pkg/hcl/discovery.go` | `configload.Loader` from fork |
+| `pkg/hcl/convert.go` | `ctyValueToInterface()` in `pkg/module_map.go` |
+| `pkg/component_populate.go` | `pkg/tofu_eval.go` + `pkg/module_map.go` |
+| `pkg/component_metadata.go` | Interface data built from `configs.Config` in `pkg/module_map.go` |
+| `pkg/component_schema.go` | Validation deferred to skill |
+| `pkg/component_map.go` | Rewritten as `pkg/module_map.go` |
 
-- `pkg/state_adapter.go` — remove `ComponentMapData`, `ComponentMetadata`, `PulumiProviders` from `TranslateStateResult`. Remove module map writing from `TranslateAndWriteState`.
-- `pkg/pulumi_state.go` — remove `ComponentMetadata` field
-- `pkg/module_tree.go` — keep address parsing and tree construction; may simplify since `configs.Config` provides module hierarchy natively
+### Cherry-picked from feature stack
 
-### Added
+- `pkg/module_tree.go` + `pkg/module_tree_test.go` — address parsing, tree construction
+- `pkg/testdata/` — real state files and TF source directories
 
-- `cmd/module_map.go` — new subcommand
-- `pkg/module_map.go` — module map builder using `configs.Config` + `lang.Scope`, includes `ModuleMap`/`ModuleMapEntry` types (renamed from `ComponentMap`)
-- `pkg/tofu_eval.go` — wrapper around `Context.Eval()` setup (config loading, state loading, provider loading, scope creation)
+### New files
+
+| File | Responsibility |
+|------|---------------|
+| `cmd/module_map.go` | Cobra subcommand |
+| `pkg/module_map.go` | Types, builder, writer |
+| `pkg/tofu_eval.go` | OpenTofu evaluation wrapper |
+| `pkg/module_map_test.go` | Tests |
+| `pkg/tofu_eval_test.go` | Tests |
 
 ### Net effect
 
-Remove ~2500 lines of custom evaluation + parsing. Add ~500 lines of OpenTofu integration wiring (plus tests).
+Add ~500 lines of OpenTofu integration wiring (plus tests) on a clean `main` base.
 
 ---
 
@@ -440,13 +447,28 @@ Development follows TDD: testdata first, then tests, then implementation. The ex
 | `TestModuleMap_NoProviders_GracefulDegradation` | Warning + module map without evaluatedValue when providers unavailable |
 | `TestModuleMap_PerExpressionFailure` | Individual expression failure doesn't block other fields |
 | `TestModuleMap_ExpressionField` | Raw HCL expression text preserved in output |
-| `TestStack_NoModuleMapOutput` | Stack command no longer produces component-map.json or component-schemas.json |
 
 ### Testdata
 
 Reuse existing fixtures in `pkg/testdata/` — these were captured from real stack operations (`tofu show -json`, real `.tfstate` files, real TF source directories with `.terraform/modules/` caches).
 
 For new tests that need fixtures not in the existing set (e.g., raw `.tfstate` format), capture from real `tofu` operations against real infrastructure or local-only providers (random, null, tls). **No handmade testdata** — all state files and TF source directories must come from actual `tofu init` / `tofu apply` / `tofu show` runs.
+
+---
+
+## Part 11: PR Stack
+
+Implementation is delivered as a stack of PRs, each independently reviewable and mergeable:
+
+| PR | Branch | Contents | Depends on |
+|----|--------|----------|------------|
+| 1 | `feat/module-tree` | Cherry-pick `module_tree.go` + testdata from feature stack | — |
+| 2 | `feat/tofu-eval` | `pkg/tofu_eval.go` — config loading, state loading, format detection, Context.Eval() wrapper | PR 1 |
+| 3 | `feat/module-map-builder` | `pkg/module_map.go` — types, builder, writer + tests | PR 2 |
+| 4 | `feat/module-map-cmd` | `cmd/module_map.go` — CLI subcommand + integration tests | PR 3 |
+| 5 | `feat/refactor-to-components-skill` | Skill files (SKILL.md + references/) | PR 4 |
+
+Use `git spice` for stacking. Each PR should pass `go build ./...` and `go test ./...` independently.
 
 ---
 
@@ -475,12 +497,4 @@ go run . module-map \
   --pulumi-stack dev --pulumi-project dns-to-db \
   --out /tmp/module-map-test/module-map.json
 # Verify: same structure, no evaluatedValue fields
-
-# Stack command (no module-map.json)
-go run . stack \
-  --from pkg/testdata/tf_dns_to_db \
-  --state-file pkg/testdata/tofu_state_dns_to_db.json \
-  --pulumi-stack dev --pulumi-project dns-to-db \
-  --to /tmp/stack-test --out /tmp/stack-test/pulumi-state.json
-# Verify: only pulumi-state.json, no module-map.json
 ```

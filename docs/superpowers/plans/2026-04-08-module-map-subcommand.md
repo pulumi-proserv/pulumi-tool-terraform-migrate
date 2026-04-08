@@ -10,12 +10,18 @@
 
 **Spec:** `docs/superpowers/specs/2026-04-08-module-map-subcommand-design.md`
 
-**Branch strategy:** Start from `main`, NOT from the `feat/mc-25-component-map-sidecar` feature stack. Cherry-pick only what's needed from the feature stack:
-- `pkg/module_tree.go` + `pkg/module_tree_test.go` (address parsing, tree construction)
-- `pkg/testdata/` fixtures created during the feature stack (state files, TF source dirs)
-- `pkg/statefile/` (state file upgrade utilities, if not already on main)
+**Branch strategy:** Start from `main`, NOT from the `feat/mc-25-component-map-sidecar` feature stack. Delivered as a **stack of PRs** using `git spice`:
 
-This avoids inheriting ~2500 lines of custom evaluation code that we're replacing. The module-map subcommand is built fresh on `main`.
+| PR | Branch | Contents | Depends on |
+|----|--------|----------|------------|
+| 0 | (spike) | Fork setup + prototype spike (throwaway, not merged) | — |
+| 1 | `feat/module-tree` | Cherry-pick `module_tree.go` + testdata from feature stack | — |
+| 2 | `feat/tofu-eval` | `pkg/tofu_eval.go` — config loading, state loading, format detection, Context.Eval() wrapper | PR 1 |
+| 3 | `feat/module-map-builder` | `pkg/module_map.go` — types, builder, writer + tests | PR 2 |
+| 4 | `feat/module-map-cmd` | `cmd/module_map.go` — CLI subcommand + integration tests | PR 3 |
+| 5 | `feat/refactor-to-components-skill` | Skill files (SKILL.md + references/) | PR 4 |
+
+This avoids inheriting ~2500 lines of custom evaluation code that we're replacing. Each PR is independently reviewable and passes `go build` + `go test`.
 
 ---
 
@@ -62,9 +68,9 @@ These files exist on `feat/mc-25-component-map-sidecar` but are intentionally no
 
 ---
 
-## Chunk 1: Fork Setup + Prototype Spike
+## Chunk 0 (Spike — not merged): Fork Setup + Prototype
 
-This chunk resolves the open questions from the spec (Part 9) before TDD implementation begins. It produces throwaway spike code, not production code.
+This chunk resolves the open questions from the spec (Part 9) before TDD implementation begins. It produces throwaway spike code, not production code. No PR created.
 
 ### Task 1: Set up local OpenTofu fork with exported packages
 
@@ -304,22 +310,26 @@ childScope, diags := ctx.Eval(context.Background(), config, state,
 
 - [ ] **Step 7: Document findings**
 
-Create `spike/FINDINGS.md` with answers to all 5 open questions. Include exact import paths, function signatures, and any gotchas discovered.
+Create `docs/superpowers/spike-findings/2026-04-08-context-eval.md` with answers to all 5 open questions. Include exact import paths, function signatures, and any gotchas discovered. Commit this file.
+
+```bash
+git add docs/superpowers/spike-findings/
+git commit -m "docs: Context.Eval() spike findings"
+```
 
 - [ ] **Step 8: Clean up spike code**
 
 ```bash
 rm -rf spike/
-git checkout go.mod go.sum  # if needed
 ```
 
-Do NOT commit spike code. The findings document is the deliverable.
+Spike code is throwaway. The findings document is the deliverable.
 
 ---
 
-## Chunk 2: Branch Setup + Cherry-pick from Feature Stack
+## Chunk 1 (PR 1: `feat/module-tree`): Cherry-pick from Feature Stack
 
-Since we're starting from `main` (not the feature stack), we need to bring over only the pieces we need.
+Branch from `main`. Bring over only the pieces we need from the feature stack.
 
 ### Task 3: Create branch from main and cherry-pick needed code
 
@@ -328,13 +338,12 @@ Since we're starting from `main` (not the feature stack), we need to bring over 
 - Cherry-pick: testdata fixtures created during feature stack work
 - Cherry-pick: `pkg/statefile/` (state file upgrade utilities, if not on main)
 
-- [ ] **Step 1: Create branch from main**
+- [ ] **Step 1: Create branch from main using git spice**
 
 ```bash
 git checkout main
 git pull upstream main
-git checkout -b feat/module-map-subcommand-v2
-git push -u origin feat/module-map-subcommand-v2
+git spice branch create feat/module-tree
 ```
 
 - [ ] **Step 2: Identify commits to cherry-pick from feature stack**
@@ -382,10 +391,10 @@ Fix any import issues — `module_tree.go` should only depend on stdlib and the 
 go test ./pkg/ -run "TestBuildComponentTree|TestParseModuleSegments|TestSplitAddressParts" -v -count=1
 ```
 
-- [ ] **Step 6: Copy the spec and plan docs**
+- [ ] **Step 6: Copy the spec and plan docs from current branch**
 
 ```bash
-git checkout feat/module-map-subcommand -- docs/superpowers/
+git checkout feat/module-map-subcommand -- docs/superpowers/specs/ docs/superpowers/plans/
 ```
 
 - [ ] **Step 7: Commit**
@@ -400,11 +409,46 @@ fixtures as foundation for the module-map subcommand."
 
 ---
 
-## Chunk 3: OpenTofu Evaluation Wrapper (TDD)
+### Task 4: Capture raw .tfstate testdata from real tofu operations
+
+**Files:**
+- Create: `pkg/testdata/tofu_tfstate_indexed_modules.tfstate`
+- Create: any other raw `.tfstate` fixtures needed
+
+Raw `.tfstate` format is central to the full-evaluation path. These must be captured from real `tofu` operations, not handcrafted.
+
+- [ ] **Step 1: Capture raw tfstate for indexed modules fixture**
+
+```bash
+cd pkg/testdata/tf_indexed_modules
+tofu init -backend=false
+tofu apply -auto-approve
+cp terraform.tfstate ../tofu_tfstate_indexed_modules.tfstate
+tofu destroy -auto-approve
+```
+
+- [ ] **Step 2: Verify the captured file is valid**
+
+```bash
+python3 -c "import json; d=json.load(open('pkg/testdata/tofu_tfstate_indexed_modules.tfstate')); print(f'version={d[\"version\"]}, resources={len(d[\"resources\"])}')"
+```
+
+Expected: `version=4, resources=2` (or similar)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add pkg/testdata/tofu_tfstate_indexed_modules.tfstate
+git commit -m "testdata: capture raw tfstate for indexed modules from real tofu apply"
+```
+
+---
+
+## Chunk 2 (PR 2: `feat/tofu-eval`): OpenTofu Evaluation Wrapper (TDD)
 
 This chunk builds `pkg/tofu_eval.go` — the wrapper around OpenTofu's config loading, state loading, and `Context.Eval()`.
 
-**Important:** The exact API calls depend on spike findings from Task 2. The code below uses the expected signatures; adjust based on what the spike discovered.
+**Important:** The exact API calls depend on spike findings from Task 2. The code below uses the expected signatures; adjust based on what the spike discovered. Code examples are pseudocode showing the expected shape, not final implementations.
 
 ### Task 5: State format auto-detection
 
@@ -736,7 +780,7 @@ git commit -m "feat: add Context.Eval() wrapper with provider plugin loading"
 
 ---
 
-## Chunk 4: Module Map Builder (TDD)
+## Chunk 3 (PR 3: `feat/module-map-builder`): Module Map Builder (TDD)
 
 This chunk builds the module map JSON output from `configs.Config` + `lang.Scope`.
 
@@ -1037,7 +1081,7 @@ git commit -m "feat: include raw HCL expression text in module map inputs"
 
 ---
 
-## Chunk 5: CLI Subcommand + Integration
+## Chunk 4 (PR 4: `feat/module-map-cmd`): CLI Subcommand + Integration
 
 ### Task 13: module-map cobra subcommand
 
@@ -1138,14 +1182,12 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
             // Graceful degradation — continue without evaluation
             fmt.Fprintf(os.Stderr, "Warning: evaluation failed, module map will not include evaluatedValue: %v\n", err)
         }
-        // Also load tfjson for resource matching
-        tfjsonState, err = tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
-            StateFilePath: stateFilePath,
-        })
-        if err != nil {
-            // Try to load as raw tfstate via tofu show
-            fmt.Fprintf(os.Stderr, "Warning: could not load state for resource matching: %v\n", err)
-        }
+        // Build tfjson-compatible resource list from *states.State for resource matching.
+        // Cannot use tofu.LoadTerraformState here — raw tfstate is a different format.
+        // Either: convert *states.State to resource list in-memory,
+        // or have BuildModuleMap accept *states.State directly.
+        // Exact approach depends on spike findings.
+        tfjsonState = convertRawStateToResourceList(rawState) // pseudocode — implement based on spike
 
     case StateFormatShowJSON:
         tfjsonState, err = tofu.LoadTerraformState(ctx, tofu.LoadTerraformStateOptions{
@@ -1260,7 +1302,50 @@ git commit -m "test: add dns-to-db integration test for module map"
 
 ---
 
-### Task 15: Full test suite verification
+### Task 15: Additional spec-required tests
+
+**Files:**
+- Modify: `pkg/module_map_test.go`
+- Modify: `pkg/tofu_eval_test.go`
+
+These tests cover behaviors specified in the spec's testing strategy but not yet addressed.
+
+- [ ] **Step 1: TestModuleMap_TfvarsResolution**
+
+Verify that tfvars values flow through to module call-site `evaluatedValue`. Use the `tf_tfvars_resolution` fixture.
+
+- [ ] **Step 2: TestModuleMap_DefaultsNotInEvaluatedValue**
+
+Verify that variable defaults do NOT appear in `evaluatedValue` — only call-site arguments do. This preserves the behavior from the original `TestPopulateComponentsFromHCL_VariableDefaultsNotMerged`.
+
+- [ ] **Step 3: TestModuleMap_NestedModuleEvaluation**
+
+Verify that nested module call-site expressions are evaluated correctly (child module uses parent's var scope). Use `parent_with_nested_module` fixture if available, or capture new testdata.
+
+- [ ] **Step 4: TestModuleMap_NoProviders_GracefulDegradation**
+
+Verify that when `.terraform/providers/` is missing, the command warns and produces a module map without `evaluatedValue` fields (same as tofu-show-json path).
+
+- [ ] **Step 5: TestModuleMap_PerExpressionFailure**
+
+Verify that a single expression evaluation failure doesn't block other fields or modules.
+
+- [ ] **Step 6: Run all new tests**
+
+```bash
+go test ./pkg/ -run "TestModuleMap_Tfvars|TestModuleMap_Defaults|TestModuleMap_Nested|TestModuleMap_NoProviders|TestModuleMap_PerExpression" -v -count=1
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add pkg/module_map_test.go pkg/tofu_eval_test.go
+git commit -m "test: add graceful degradation, tfvars, defaults, and nested module tests"
+```
+
+---
+
+### Task 16: Full test suite verification
 
 **Files:** None (verification only)
 
@@ -1303,9 +1388,9 @@ ls /tmp/stack-test/
 
 ---
 
-## Chunk 6: refactor-to-components Skill
+## Chunk 5 (PR 5: `feat/refactor-to-components-skill`): Skill
 
-### Task 16: Write SKILL.md
+### Task 17: Write SKILL.md
 
 **Files:**
 - Create: `docs/superpowers/skills/refactor-to-components/SKILL.md`
@@ -1329,7 +1414,7 @@ git commit -m "feat: add refactor-to-components skill"
 
 ---
 
-### Task 17: Write skill reference documents
+### Task 18: Write skill reference documents
 
 **Files:**
 - Create: `docs/superpowers/skills/refactor-to-components/references/alias-wiring-pattern.md`
@@ -1357,42 +1442,22 @@ git commit -m "feat: add refactor-to-components skill reference documents"
 
 ---
 
-## Chunk 7: Final Push
+## Chunk 6: Submit PR Stack
 
-### Task 18: Push and create PR
+### Task 19: Submit stack with git spice
 
-- [ ] **Step 1: Push to fork**
-
-```bash
-git push origin feat/module-map-subcommand
-```
-
-- [ ] **Step 2: Create PR on pulumi-proserv fork**
+- [ ] **Step 1: Push all branches**
 
 ```bash
-gh pr create \
-  --repo pulumi-proserv/pulumi-tool-terraform-migrate \
-  --title "feat: module-map subcommand + Context.Eval() integration" \
-  --body "$(cat <<'EOF'
-## Summary
-- Replace custom HCL evaluation (~2500 lines) with OpenTofu Context.Eval()
-- Extract module map generation into standalone `module-map` subcommand
-- Remove module map concerns from `stack` command
-- Add `refactor-to-components` skill
-
-## Spec
-docs/superpowers/specs/2026-04-08-module-map-subcommand-design.md
-
-## Test plan
-- [ ] `go test ./pkg/... -count=1` passes
-- [ ] `go run . module-map` produces correct module-map.json
-- [ ] `go run . stack` no longer produces component-map.json
-- [ ] Manual verification with dns-to-db fixture
-
-Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
+git spice stack submit --fill
 ```
+
+- [ ] **Step 2: Verify all PRs on pulumi-proserv fork**
+
+Each PR should:
+- Pass `go build ./...` and `go test ./...` independently
+- Have a clear description of what it adds
+- Reference the spec
 
 - [ ] **Step 3: File request for pulumi/opentofu fork exports**
 
