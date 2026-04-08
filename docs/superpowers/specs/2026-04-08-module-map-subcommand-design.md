@@ -376,7 +376,8 @@ When user maps a module to an existing component (e.g., `@pulumi/awsx:ec2:Vpc`):
 - `pkg/component_metadata.go` — interface data now built directly from `configs.Config` in module map builder
 - `pkg/component_schema.go` — schema validation moves to `refactor-to-components` skill
 - `pkg/component_map.go` — renamed/rewritten as `pkg/module_map.go`
-- Associated test files (`pkg/component_populate_test.go`, `pkg/component_metadata_test.go`, `pkg/component_schema_test.go`)
+- Associated test files: `pkg/component_populate_test.go`, `pkg/component_metadata_test.go`, `pkg/component_schema_test.go`, `pkg/hcl/evaluator_test.go`, `pkg/hcl/parser_test.go`, `pkg/hcl/discovery_test.go`, `pkg/hcl/convert_test.go`
+- Note: tests for `CtyValueToPulumiPropertyValue` (currently in `pkg/hcl/convert_test.go`) should be migrated to `pkg/module_map_test.go` alongside the moved function
 
 ### Modified
 
