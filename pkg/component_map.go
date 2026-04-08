@@ -36,28 +36,13 @@ type ComponentMap struct {
 
 // ModuleMapEntry describes a single TF module instance mapped to a Pulumi component.
 type ModuleMapEntry struct {
-	TerraformPath string                       `json:"terraformPath"`
-	Source        string                       `json:"source,omitempty"`
-	IndexKey      string                       `json:"indexKey,omitempty"`
-	IndexType     string                       `json:"indexType,omitempty"`
-	Resources     map[string]*ResourceMapEntry `json:"resources"`
-	Interface     *ModuleInterface             `json:"interface,omitempty"`
-	Modules       map[string]*ModuleMapEntry   `json:"modules"`
-}
-
-// ResourceMapEntry describes a resource type within a module.
-// A single type.name in TF (e.g. aws_lb_listener.this) may have multiple
-// instances (via count or for_each), each with its own flat-state name.
-type ResourceMapEntry struct {
-	PulumiType string              `json:"pulumiType"`
-	Instances  []ResourceInstance  `json:"instances"`
-}
-
-// ResourceInstance describes a single instance of a resource within a module.
-type ResourceInstance struct {
-	URN      string `json:"urn"`
-	FlatName string `json:"flatName"`
-	IndexKey string `json:"indexKey,omitempty"`
+	TerraformPath string                     `json:"terraformPath"`
+	Source        string                     `json:"source,omitempty"`
+	IndexKey      string                     `json:"indexKey,omitempty"`
+	IndexType     string                     `json:"indexType,omitempty"`
+	Resources     []string                   `json:"resources"`
+	Interface     *ModuleInterface           `json:"interface,omitempty"`
+	Modules       map[string]*ModuleMapEntry `json:"modules"`
 }
 
 // ModuleInterface describes the inputs and outputs of a component.
@@ -137,7 +122,6 @@ func buildModuleMapEntry(
 ) *ModuleMapEntry {
 	entry := &ModuleMapEntry{
 		TerraformPath: node.modulePath,
-		Resources:     map[string]*ResourceMapEntry{},
 		Modules:       map[string]*ModuleMapEntry{},
 	}
 
@@ -159,7 +143,7 @@ func buildModuleMapEntry(
 		}
 	}
 
-	// Match resources from state to this module, accumulating instances per type.name
+	// Match resources from state to this module, collecting URNs
 	for _, res := range allResources {
 		segments := parseModuleSegments(res.Address)
 		resModulePath := buildModulePath(segments)
@@ -167,36 +151,18 @@ func buildModuleMapEntry(
 			continue
 		}
 
-		// Build the resource map key: "resourceType.resourceName"
-		resMapKey := res.Type + "." + res.Name
-
-		existing, ok := entry.Resources[resMapKey]
-		if !ok {
-			// Determine PulumiType by looking up the provider
-			pulumiType := ""
-			prov, provOk := pulumiProviders[providermap.TerraformProviderName(res.ProviderName)]
-			if provOk {
-				tok, err := bridge.PulumiTypeToken(res.Type, prov.Provider)
-				if err == nil {
-					pulumiType = string(tok)
-				}
+		pulumiType := ""
+		prov, provOk := pulumiProviders[providermap.TerraformProviderName(res.ProviderName)]
+		if provOk {
+			tok, err := bridge.PulumiTypeToken(res.Type, prov.Provider)
+			if err == nil {
+				pulumiType = string(tok)
 			}
-			existing = &ResourceMapEntry{
-				PulumiType: pulumiType,
-			}
-			entry.Resources[resMapKey] = existing
 		}
 
-		// Extract instance index key from the address
-		indexKey := extractResourceIndexKey(res.Address, res.Type, res.Name)
-
 		flatName := PulumiNameFromTerraformAddress(res.Address, res.Type)
-		urn := fmt.Sprintf("urn:pulumi:%s::%s::%s::%s", stackName, projectName, existing.PulumiType, flatName)
-		existing.Instances = append(existing.Instances, ResourceInstance{
-			URN:      urn,
-			FlatName: flatName,
-			IndexKey: indexKey,
-		})
+		urn := fmt.Sprintf("urn:pulumi:%s::%s::%s::%s", stackName, projectName, pulumiType, flatName)
+		entry.Resources = append(entry.Resources, urn)
 	}
 
 	// Interface from metadata + component evaluated values
@@ -329,29 +295,6 @@ func WriteComponentMap(cm *ComponentMap, path string) error {
 		return fmt.Errorf("writing component map: %w", err)
 	}
 	return nil
-}
-
-// extractResourceIndexKey extracts the instance index key from a fully qualified
-// resource address. For "module.vpc.aws_subnet.public[0]" it returns "0".
-// For "module.alb.aws_lb_listener.this[\"my-https-listener\"]" it returns "my-https-listener".
-// Returns "" if the resource has no index.
-func extractResourceIndexKey(address, resourceType, resourceName string) string {
-	// The resource portion is everything after the module path: "type.name" or "type.name[key]"
-	suffix := resourceType + "." + resourceName
-	idx := strings.LastIndex(address, suffix)
-	if idx == -1 {
-		return ""
-	}
-	after := address[idx+len(suffix):]
-	if !strings.HasPrefix(after, "[") || !strings.HasSuffix(after, "]") {
-		return ""
-	}
-	key := after[1 : len(after)-1]
-	// Strip surrounding quotes if present
-	if len(key) >= 2 && key[0] == '"' && key[len(key)-1] == '"' {
-		key = key[1 : len(key)-1]
-	}
-	return key
 }
 
 // stripModulePrefix removes the module path prefix from a resource address,
