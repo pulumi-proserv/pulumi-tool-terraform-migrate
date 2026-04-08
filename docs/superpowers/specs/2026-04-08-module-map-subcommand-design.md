@@ -40,6 +40,16 @@ Investigated and rejected because:
 - **Inferred schemas from state JSON** (`ctyjson.ImpliedType`) — cheap but lossy (list vs set, optional attrs)
 - **Actual provider plugins** (chosen) — `tofu init` is already required for module cache, so provider binaries are available in `.terraform/providers/`. Correct schemas with no type mismatches.
 
+### Prerequisite: `tofu init`
+
+The `module-map` subcommand requires `tofu init` to have been run in the `--from` directory. This provides:
+- `.terraform/modules/` — module source cache for config loading
+- `.terraform/providers/` — provider binaries for schema resolution
+
+This is a harder requirement than the current `stack` command, which works with just a state file. The trade-off is justified: `Context.Eval()` with real providers gives correct, battle-tested evaluation vs our custom code which had known edge cases.
+
+When providers are unavailable (no `.terraform/providers/`), the command should emit a clear error: `"module-map requires 'tofu init' to have been run in the --from directory for provider schemas and module resolution."`
+
 ### Fork dependency
 
 The `pulumi/opentofu` fork already exports `lang`, `states`, `addrs`, `encryption`, `states/statefile`. This design requires additional exports:
@@ -77,7 +87,6 @@ TF source dir + state file + .terraform/
     +-------------+--------------+
     | 3. Build + Write           |
     |  - module-map.json         |
-    |  - module-schemas.json     |
     +----------------------------+
 ```
 
@@ -86,13 +95,17 @@ TF source dir + state file + .terraform/
 | Command | Produces | Concerns |
 |---------|----------|----------|
 | `stack` | `pulumi-state.json`, `required-plugins.json` (optional) | State translation only |
-| `module-map` | `module-map.json`, `module-schemas.json` | Module mapping only |
+| `module-map` | `module-map.json` | Module mapping only |
 
 The two commands share provider loading code but are otherwise independent.
 
 ---
 
 ## Part 2: Load Stage
+
+### `.terraform/` location
+
+The `.terraform/` directory is expected at `<--from>/.terraform/`. This follows Terraform's default convention. The `TF_DATA_DIR` environment variable is not supported in v1; if needed, a `--tf-data-dir` flag can be added later.
 
 ### Config loading
 
@@ -155,13 +168,31 @@ For each module call in `config.Module.ModuleCalls`:
 for name, call := range config.Module.ModuleCalls {
     attrs, _ := call.Config.JustAttributes()
     for attrName, attr := range attrs {
-        val, _ := scope.EvalExpr(attr.Expr, cty.DynamicPseudoType)
+        val, diags := scope.EvalExpr(attr.Expr, cty.DynamicPseudoType)
+        if diags.HasErrors() {
+            // Log warning, skip this input — module map entry omits evaluatedValue
+            fmt.Fprintf(os.Stderr, "Warning: could not evaluate %s.%s: %s\n", name, attrName, diags.Err())
+            continue
+        }
         // val is the evaluated cty.Value -> goes into evaluatedValue
     }
 }
 ```
 
 For nested modules, we need the child module's scope. Open question to verify during prototyping: does `Context.Eval()` with `RootModuleInstance` make child scopes accessible, or do we need to call `Eval()` per module instance?
+
+### Error handling strategy
+
+`Context.Eval()` may produce diagnostics (warnings or errors) for various reasons: missing providers, state drift, unresolvable expressions. The strategy is **graceful degradation**:
+
+- **Config load failure** — fatal error, cannot proceed
+- **State load failure** — fatal error, cannot proceed
+- **Provider load failure** — warning + continue without expression evaluation (same as `tofu show -json` path: module map without `evaluatedValue`)
+- **`Context.Eval()` failure** — warning + continue without expression evaluation
+- **Per-expression eval failure** — warning, omit `evaluatedValue` for that field, continue with remaining fields
+- **Per-module eval failure** — warning, omit all `evaluatedValue` for that module, continue with remaining modules
+
+The module map is always produced. `evaluatedValue` fields are best-effort.
 
 ### Step 3: Extract declarations
 
@@ -198,9 +229,12 @@ Walk `configs.Config` tree + evaluated values to build output:
 ### Output files
 
 - `module-map.json` — module hierarchy with resources + evaluated interfaces
-- `module-schemas.json` — component interface metadata (types, defaults, descriptions) for code generation
+
+`module-schemas.json` from the original plan is **dropped**. Its data (variable types, defaults, descriptions, output declarations) is already embedded in `module-map.json`'s `interface` fields. A separate file added complexity without value — the `refactor-to-components` skill reads everything it needs from `module-map.json`.
 
 ### module-map.json schema
+
+Input fields include `expression` (the raw HCL expression text from the call site, e.g., `"var.vpc_cidr"`) alongside `evaluatedValue`. This helps the `refactor-to-components` skill understand how values are derived and produce better code (e.g., using a variable reference instead of a hardcoded value).
 
 ```json
 {
@@ -214,7 +248,7 @@ Walk `configs.Config` tree + evaluated values to build output:
       ],
       "interface": {
         "inputs": [
-          {"name": "domain_name", "type": "string", "evaluatedValue": "example.com"}
+          {"name": "domain_name", "type": "string", "expression": "var.domain", "evaluatedValue": "example.com"}
         ],
         "outputs": [
           {"name": "lb_arn", "description": "The ARN of the load balancer"}
@@ -249,6 +283,7 @@ pulumi-terraform-migrate module-map \
 
 - `--from` is required (HCL source essential for module map)
 - `--state-file` accepts both raw `.tfstate` and `tofu show -json` (auto-detected)
+- `--out` specifies the `module-map.json` file path directly
 - No `--to` (Pulumi project dir not needed)
 - No `--module-source-map` (config loader resolves all sources via `.terraform/modules/`)
 - No `--module-schema` (validation deferred to `refactor-to-components` skill)
@@ -258,10 +293,11 @@ pulumi-terraform-migrate module-map \
 ## Part 6: Changes to `stack` Command
 
 Remove from `TranslateAndWriteState`:
-- `buildComponentMap()` call and file writing
-- `ComponentMapData` and `PulumiProviders` fields from `TranslateStateResult`
-- `component-schemas.json` writing
+- `buildComponentMap()` call and `component-map.json` writing
+- `WriteComponentSchemaMetadata()` call and `component-schemas.json` writing
+- `ComponentMapData`, `ComponentMetadata`, and `PulumiProviders` fields from `TranslateStateResult`
 - `ComponentMetadata` field from `PulumiState`
+- Component tree building and `populateComponentsFromHCL()` call from `convertState()`
 
 `stack` produces only `pulumi-state.json` + optional `required-plugins.json`.
 
@@ -332,12 +368,15 @@ When user maps a module to an existing component (e.g., `@pulumi/awsx:ec2:Vpc`):
 
 ### Removed
 
-- `pkg/hcl/evaluator.go` — replaced by `Context.Eval()`
+- `pkg/hcl/evaluator.go` — replaced by `Context.Eval()` scope
+- `pkg/hcl/parser.go` — replaced by `configs.Config` (ModuleCalls, Variables, Outputs)
+- `pkg/hcl/discovery.go` — replaced by `configload.Loader` (module source resolution from cache)
+- `pkg/hcl/convert.go` — `CtyValueToPulumiPropertyValue` moves to `pkg/module_map.go`; `PulumiPropertyMapToCtyMap` no longer needed
 - `pkg/component_populate.go` — entire custom orchestration
-- `pkg/component_metadata.go` — rebuilds from `configs.Config` directly
-- `pkg/component_schema.go` — validation moves to skill
-- `pkg/component_map.go` — renamed/rewritten
-- Associated test files
+- `pkg/component_metadata.go` — interface data now built directly from `configs.Config` in module map builder
+- `pkg/component_schema.go` — schema validation moves to `refactor-to-components` skill
+- `pkg/component_map.go` — renamed/rewritten as `pkg/module_map.go`
+- Associated test files (`pkg/component_populate_test.go`, `pkg/component_metadata_test.go`, `pkg/component_schema_test.go`)
 
 ### Modified
 
@@ -348,13 +387,12 @@ When user maps a module to an existing component (e.g., `@pulumi/awsx:ec2:Vpc`):
 ### Added
 
 - `cmd/module_map.go` — new subcommand
-- `pkg/module_map.go` — module map builder using `configs.Config` + `lang.Scope`
-- `pkg/module_schemas.go` — schema metadata builder from `configs.Module.Variables/Outputs`
+- `pkg/module_map.go` — module map builder using `configs.Config` + `lang.Scope`, includes `ModuleMap`/`ModuleMapEntry` types (renamed from `ComponentMap`)
 - `pkg/tofu_eval.go` — wrapper around `Context.Eval()` setup (config loading, state loading, provider loading, scope creation)
 
 ### Net effect
 
-Remove ~2000 lines of custom evaluation. Add ~500 lines of OpenTofu integration wiring.
+Remove ~2500 lines of custom evaluation + parsing. Add ~500 lines of OpenTofu integration wiring (plus tests).
 
 ---
 
