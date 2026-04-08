@@ -149,54 +149,55 @@ Exact package paths for provider factory creation TBD during prototyping with th
 
 ## Part 3: Evaluate Stage
 
-### Step 1: Create evaluation scope
+### Spike finding: evaluate `var.*` in child scope, not call-site expressions
+
+The prototype spike revealed that the right approach is **not** to evaluate call-site expressions (e.g., `prefix = "test-${count.index}"`) in the parent scope. Instead:
+
+- Call `Context.Eval()` **per child module instance** (e.g., `addrs.RootModuleInstance.Child("pet", addrs.IntKey(0))`)
+- Evaluate `var.<name>` in the child scope to get the already-resolved input value
+
+This works because OpenTofu's evaluation graph already resolves variable assignments through the module call. The child scope contains the final evaluated values.
+
+**Why not call-site expressions:** The root scope cannot evaluate call-site expressions that reference `count.index` or `each.key` because the root scope is not in a counted context. Evaluating `call.Config.JustAttributes()` expressions fails with "Reference to count in non-counted context."
+
+### Step 1: Create evaluation context
 
 ```go
-ctx := tofu.NewContext(&tofu.ContextOpts{
-    Plugins: pluginLibrary,
-})
-scope, diags := ctx.Eval(evalCtx, config, state, addrs.RootModuleInstance, &tofu.EvalOpts{
-    SetVariables: inputVariables, // from terraform.tfvars + *.auto.tfvars
+tofuCtx, diags := tofu.NewContext(&tofu.ContextOpts{
+    Providers: providerFactories, // from providercache
 })
 ```
 
-Returns `*lang.Scope` with the entire root module namespace populated: variables, locals, resource attributes, module outputs — all resolved in correct dependency order by OpenTofu's DAG walker.
+Provider factories are built from `.terraform/providers/` using `providercache.NewDir()` + `AllAvailablePackages()` + go-plugin GRPC setup. See spike findings for exact wiring.
 
-### Step 2: Extract module call-site argument values
+### Step 2: Evaluate per module instance
 
-For each module call in `config.Module.ModuleCalls`:
+For each module instance (accounting for count/for_each expansion):
 
 ```go
-for name, call := range config.Module.ModuleCalls {
-    attrs, _ := call.Config.JustAttributes()
-    for attrName, attr := range attrs {
-        val, diags := scope.EvalExpr(attr.Expr, cty.DynamicPseudoType)
-        if diags.HasErrors() {
-            // Log warning, skip this input — module map entry omits evaluatedValue
-            fmt.Fprintf(os.Stderr, "Warning: could not evaluate %s.%s: %s\n", name, attrName, diags.Err())
-            continue
-        }
-        // val is the evaluated cty.Value -> goes into evaluatedValue
+// For a module with count=2:
+for i := 0; i < count; i++ {
+    childAddr := addrs.RootModuleInstance.Child("pet", addrs.IntKey(i))
+    childScope, diags := tofuCtx.Eval(ctx, config, state, childAddr, &tofu.EvalOpts{})
+
+    // Read evaluated variable values from child scope
+    for varName := range childConfig.Module.Variables {
+        expr, _ := hclsyntax.ParseExpression([]byte("var."+varName), "<eval>", hcl.Pos{Line: 1, Column: 1})
+        val, _ := childScope.EvalExpr(expr, cty.DynamicPseudoType)
+        // val is the evaluated input value → goes into evaluatedValue
     }
 }
 ```
 
-For nested modules, we need the child module's scope. Open question to verify during prototyping: does `Context.Eval()` with `RootModuleInstance` make child scopes accessible, or do we need to call `Eval()` per module instance?
+For nested modules, use chained addressing: `addrs.RootModuleInstance.Child("vpc", addrs.NoKey).Child("subnets", addrs.IntKey(0))`.
 
-### Error handling strategy
+### Step 3: Determine instance count
 
-`Context.Eval()` may produce diagnostics (warnings or errors) for various reasons: missing providers, state drift, unresolvable expressions. The strategy is **graceful degradation**:
+To know how many instances exist for count/for_each modules, check the state. Resources in state have addresses like `module.pet[0].random_pet.this` — collect unique module instance keys from resource addresses.
 
-- **Config load failure** — fatal error, cannot proceed
-- **State load failure** — fatal error, cannot proceed
-- **Provider load failure** — warning + continue without expression evaluation (same as `tofu show -json` path: module map without `evaluatedValue`)
-- **`Context.Eval()` failure** — warning + continue without expression evaluation
-- **Per-expression eval failure** — warning, omit `evaluatedValue` for that field, continue with remaining fields
-- **Per-module eval failure** — warning, omit all `evaluatedValue` for that module, continue with remaining modules
+Alternatively, evaluate `count` or `for_each` expressions in the root scope to get the count/key set.
 
-The module map is always produced. `evaluatedValue` fields are best-effort.
-
-### Step 3: Extract declarations
+### Step 4: Extract declarations
 
 Directly from `configs.Config`, no evaluation needed:
 
@@ -208,9 +209,17 @@ childConfig.Module.Outputs    // name, description, expression
 
 Replaces `ParseModuleVariables()` and `ParseModuleOutputs()`.
 
-### Step 4: Count/for_each expansion
+### Error handling strategy
 
-OpenTofu's `ModuleExpansionTransformer` handles this natively. Each instance gets its own `count.index` or `each.key`/`each.value` in scope. To verify during prototyping: how per-instance values are represented in the scope.
+`Context.Eval()` may produce diagnostics (warnings or errors) for various reasons: missing providers, state drift, unresolvable expressions. The strategy is **graceful degradation**:
+
+- **Config load failure** — fatal error, cannot proceed
+- **State load failure** — fatal error, cannot proceed
+- **Provider load failure** — warning + continue without expression evaluation (same as `tofu show -json` path: module map without `evaluatedValue`)
+- **`Context.Eval()` per-instance failure** — warning, omit `evaluatedValue` for that instance, continue with remaining instances
+- **Per-variable eval failure** — warning, omit `evaluatedValue` for that field, continue with remaining fields
+
+The module map is always produced. `evaluatedValue` fields are best-effort.
 
 ---
 
@@ -236,7 +245,9 @@ Walk `configs.Config` tree + evaluated values to build output:
 
 ### module-map.json schema
 
-Input fields include `expression` (the raw HCL expression text from the call site, e.g., `"var.vpc_cidr"`) alongside `evaluatedValue`. This helps the `refactor-to-components` skill understand how values are derived and produce better code (e.g., using a variable reference instead of a hardcoded value).
+Input `evaluatedValue` comes from evaluating `var.<name>` in the child module instance scope. The `expression` field contains the raw HCL expression from the call site (obtained via `call.Config.JustAttributes()`) — this helps the `refactor-to-components` skill understand how values are derived.
+
+Note: `expression` is available from config parsing regardless of evaluation success. `evaluatedValue` requires successful `Context.Eval()` with providers.
 
 ```json
 {
@@ -406,15 +417,23 @@ Add ~500 lines of OpenTofu integration wiring (plus tests) on a clean `main` bas
 
 ---
 
-## Part 9: Open Questions for Prototyping
+## Part 9: Spike Findings (Resolved)
 
-These will be resolved during implementation with a local `replace` directive on the `pulumi/opentofu` fork:
+Prototype spike resolved all open questions. See `/tmp/module-map-spike/` for spike code.
 
-1. **Child module scopes** — Does `Context.Eval()` with `RootModuleInstance` make child module scopes accessible? Or do we need `Eval()` per module instance?
-2. **Count/for_each instances** — How are per-instance evaluated values represented in the scope?
-3. **Provider plugin loading** — Exact package paths for creating provider factories from `.terraform/providers/` cache.
-4. **tfvars loading** — How to populate `SetVariables` from `terraform.tfvars` + `*.auto.tfvars`. May be handled by config loading or need separate parsing.
-5. **`configs.RootModuleCallForTesting()`** — Is this the right entry point for `LoadConfig`, or is there a production-oriented call? This function name strongly suggests test-only usage; the fork may need to export a production equivalent.
+1. **Child module scopes** — RESOLVED: Call `Eval()` per module instance. `addrs.RootModuleInstance.Child("pet", addrs.IntKey(0))` returns a scope where `var.prefix` = `"test-0"`. Root scope cannot evaluate call-site expressions with `count.index`.
+
+2. **Count/for_each instances** — RESOLVED: Each instance gets its own scope via `Eval()` with the instance address. Instance count determined from state resource addresses.
+
+3. **Provider plugin loading** — RESOLVED: `providercache.NewDir(tfDir + "/.terraform/providers")` → `AllAvailablePackages()` → `CachedProvider.ExecutableFile()` → go-plugin GRPC client → `providers.Factory`. All packages exported from `pulumi/opentofu` fork at `pulumi-main` branch.
+
+4. **tfvars loading** — PARTIALLY RESOLVED: Spike used `&tofu.EvalOpts{}` (no explicit tfvars) and variable values resolved correctly — OpenTofu's graph handles tfvars loading internally when the config dir contains `terraform.tfvars`. Still needs verification with `*.auto.tfvars`.
+
+5. **`configs.RootModuleCallForTesting()`** — RESOLVED: This is the correct entry point. Signature: `loader.LoadConfig(tfDir, configs.RootModuleCallForTesting())` (2 args, no context).
+
+6. **Fork version** — RESOLVED: Use `github.com/pulumi/opentofu@v0.0.0-20250318202137-3146daceaf73` (branch `pulumi-main`). All needed packages exported: `configs`, `configs/configload`, `tofu`, `providers`, `providercache`, `plugin`, `lang`, `states`, `addrs`, `encryption`. Requires HCL replace directive: `github.com/hashicorp/hcl/v2 => github.com/opentofu/hcl/v2`.
+
+7. **Module dir paths** — RESOLVED: `Dir` paths in `.terraform/modules/modules.json` are relative to the TF root dir. The `configload.NewLoader` `ModulesDir` must point to `.terraform/modules/` and the loader resolves module `Dir` relative to the TF root.
 
 ---
 
