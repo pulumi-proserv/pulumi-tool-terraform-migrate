@@ -133,6 +133,8 @@ The `--state-file` flag accepts two formats, auto-detected by peeking at the JSO
 
 The `tofu show -json` format is lossy (missing `AttrsJSON` as raw bytes, `Private` metadata, proper sensitive paths). Converting to `*states.State` is not feasible, so it operates at reduced fidelity.
 
+Auto-detection heuristic: if the JSON has a `"format_version"` key, it's `tofu show -json` output. Otherwise it's a raw `.tfstate` (which may be version 3 or 4).
+
 ### Provider plugin loading
 
 Providers live in `.terraform/providers/` after `tofu init`. The load stage:
@@ -405,7 +407,46 @@ These will be resolved during implementation with a local `replace` directive on
 2. **Count/for_each instances** — How are per-instance evaluated values represented in the scope?
 3. **Provider plugin loading** — Exact package paths for creating provider factories from `.terraform/providers/` cache.
 4. **tfvars loading** — How to populate `SetVariables` from `terraform.tfvars` + `*.auto.tfvars`. May be handled by config loading or need separate parsing.
-5. **`configs.RootModuleCallForTesting()`** — Is this the right entry point for `LoadConfig`, or is there a production-oriented call?
+5. **`configs.RootModuleCallForTesting()`** — Is this the right entry point for `LoadConfig`, or is there a production-oriented call? This function name strongly suggests test-only usage; the fork may need to export a production equivalent.
+
+---
+
+## Part 10: Testing Strategy (TDD)
+
+Development follows TDD: testdata first, then tests, then implementation. The existing test suite serves as guidance for what behavior to preserve, adapted to the new approach.
+
+### Existing tests to use as guidance
+
+| Original Test | Tests What | New Equivalent |
+|--------------|-----------|----------------|
+| `TestConvertWithHCLPopulation` | Module call-site inputs evaluated from HCL | `TestModuleMap_InputsEvaluated` — same fixture, verify `evaluatedValue` in module-map output |
+| `TestConvertDnsToDb_WithHCLAndModuleCache` | Real-world 18-module stack with remote modules | `TestModuleMap_DnsToDb` — same fixture, verify 18 modules with resources + interfaces |
+| `TestConvertDnsToDb_EvalWarningCount` | Zero eval warnings on complex fixture | `TestModuleMap_DnsToDb_NoWarnings` — same zero-warning target |
+| `TestConvertMultiResourceModule_WithHCL` | Multi-resource module inputs/outputs | `TestModuleMap_MultiResourceModule` — verify inputs + outputs in module-map |
+| `TestConvertComplexExpressions` | count.index, conditionals, string interpolation | `TestModuleMap_ComplexExpressions` — verify per-instance evaluatedValues |
+| `TestConvertTfvarsResolution` | tfvars values flow into module inputs | `TestModuleMap_TfvarsResolution` — verify tfvars-derived evaluatedValue |
+| `TestBuildComponentSchemaMetadata` | Variable types, defaults, descriptions in metadata | `TestModuleMap_InterfaceDeclarations` — verify type/default/description from configs.Config |
+| `TestPopulateComponentsFromHCL_VariableDefaultsNotMerged` | Defaults NOT in evaluatedValue | `TestModuleMap_DefaultsNotInEvaluatedValue` — only call-site args get evaluatedValue |
+| `TestPopulateComponentsFromHCL_OutputValuesEvaluated` | Output expressions evaluated from state | `TestModuleMap_OutputsEvaluated` — verify output evaluatedValues from scope |
+| `TestPopulateComponentsFromHCL_NestedCallSiteUsesParentVars` | Nested module uses parent's var scope | `TestModuleMap_NestedModuleEvaluation` — Context.Eval() handles this natively |
+
+### New tests (no original equivalent)
+
+| Test | Purpose |
+|------|---------|
+| `TestModuleMap_RawTfstate` | Full evaluation with raw `.tfstate` format |
+| `TestModuleMap_TofuShowJson` | Reduced fidelity — no evaluatedValue, structure still correct |
+| `TestModuleMap_StateFormatAutoDetect` | Correct format detection for both input types |
+| `TestModuleMap_NoProviders_GracefulDegradation` | Warning + module map without evaluatedValue when providers unavailable |
+| `TestModuleMap_PerExpressionFailure` | Individual expression failure doesn't block other fields |
+| `TestModuleMap_ExpressionField` | Raw HCL expression text preserved in output |
+| `TestStack_NoModuleMapOutput` | Stack command no longer produces component-map.json or component-schemas.json |
+
+### Testdata
+
+Reuse existing fixtures in `pkg/testdata/` — these were captured from real stack operations (`tofu show -json`, real `.tfstate` files, real TF source directories with `.terraform/modules/` caches).
+
+For new tests that need fixtures not in the existing set (e.g., raw `.tfstate` format), capture from real `tofu` operations against real infrastructure or local-only providers (random, null, tls). **No handmade testdata** — all state files and TF source directories must come from actual `tofu init` / `tofu apply` / `tofu show` runs.
 
 ---
 
