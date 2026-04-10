@@ -29,6 +29,7 @@ func newStackCmd() *cobra.Command {
 	var strict bool
 	var pulumiStack string
 	var pulumiProject string
+	var stateFile string
 
 	cmd := &cobra.Command{
 		Use:   "stack",
@@ -70,7 +71,7 @@ See also:
   https://www.pulumi.com/docs/iac/cli/commands/pulumi_plugin_install/
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := pkg.TranslateAndWriteState(cmd.Context(), from, to, out, plugins, strict, pulumiStack, pulumiProject)
+			err := pkg.TranslateAndWriteState(cmd.Context(), from, stateFile, to, out, plugins, strict, pulumiStack, pulumiProject)
 			if err != nil {
 				return fmt.Errorf("failed to convert and write Terraform state: %w", err)
 			}
@@ -85,6 +86,8 @@ See also:
 	cmd.Flags().BoolVarP(&strict, "strict", "s", false, "Fail if any resources fail to be translated")
 	cmd.Flags().StringVar(&pulumiStack, "pulumi-stack", "", "Pulumi stack name (defaults to current stack)")
 	cmd.Flags().StringVar(&pulumiProject, "pulumi-project", "", "Pulumi project name (defaults to Pulumi.yaml)")
+	cmd.Flags().StringVar(&stateFile, "state-file", "",
+		"Path to a pre-captured state file (tofu show -json output or terraform.tfstate). Bypasses running tofu commands.")
 
 	cmd.MarkFlagRequired("from")
 	cmd.MarkFlagRequired("to")
