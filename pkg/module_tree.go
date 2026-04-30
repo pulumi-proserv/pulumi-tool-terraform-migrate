@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/pulumi/opentofu/addrs"
 )
 
 // moduleSegment represents a single module in a Terraform address path.
@@ -288,6 +290,22 @@ func formatKey(key string) string {
 		return key
 	}
 	return `"` + key + `"`
+}
+
+// moduleSegmentsFromAddr converts an addrs.ModuleInstance to a slice of moduleSegment.
+func moduleSegmentsFromAddr(addr addrs.ModuleInstance) []moduleSegment {
+	segments := make([]moduleSegment, len(addr))
+	for i, step := range addr {
+		seg := moduleSegment{name: step.Name}
+		switch k := step.InstanceKey.(type) {
+		case addrs.IntKey:
+			seg.key = fmt.Sprintf("%d", int(k))
+		case addrs.StringKey:
+			seg.key = string(k)
+		}
+		segments[i] = seg
+	}
+	return segments
 }
 
 
