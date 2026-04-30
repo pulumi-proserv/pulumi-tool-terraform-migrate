@@ -176,6 +176,7 @@ func TestWriteModuleMap(t *testing.T) {
 				TranslatedURN:    "",
 				TerraformAddress: "data.terraform_remote_state.old",
 				ImportID:         "",
+				Attributes:       map[string]interface{}{"backend": "s3", "workspace": "prod"},
 			},
 		},
 	}
@@ -213,6 +214,10 @@ func TestWriteModuleMap(t *testing.T) {
 	assert.Equal(t, "data", got.RootResources[1].Mode)
 	assert.Equal(t, "", got.RootResources[1].TranslatedURN)
 	assert.Equal(t, "data.terraform_remote_state.old", got.RootResources[1].TerraformAddress)
+	require.NotNil(t, got.RootResources[1].Attributes)
+	assert.Equal(t, "s3", got.RootResources[1].Attributes["backend"])
+	assert.Equal(t, "prod", got.RootResources[1].Attributes["workspace"])
+	assert.Nil(t, got.RootResources[0].Attributes) // managed resources have no attributes
 }
 
 func TestBuildModuleMap_RootResources(t *testing.T) {
@@ -292,6 +297,8 @@ func TestBuildModuleMap_RootResources(t *testing.T) {
 	assert.Equal(t, "data.terraform_remote_state.old", mm.RootResources[1].TerraformAddress)
 	assert.Equal(t, "", mm.RootResources[1].TranslatedURN)
 	assert.Equal(t, "", mm.RootResources[1].ImportID) // no "id" attribute
+	require.NotNil(t, mm.RootResources[1].Attributes)
+	assert.Equal(t, "s3", mm.RootResources[1].Attributes["backend"])
 }
 
 func TestBuildModuleMap_DataSources(t *testing.T) {
@@ -350,6 +357,9 @@ func TestBuildModuleMap_DataSources(t *testing.T) {
 	assert.Equal(t, "module.pet[0].data.aws_caller_identity.current", dataRes.TerraformAddress)
 	assert.Equal(t, "", dataRes.TranslatedURN)
 	assert.Equal(t, "123456789", dataRes.ImportID)
+	require.NotNil(t, dataRes.Attributes)
+	assert.Equal(t, "123456789", dataRes.Attributes["account_id"])
+	assert.Equal(t, "123456789", dataRes.Attributes["id"])
 
 	// The managed resource should still be there.
 	var managedRes *ModuleResource

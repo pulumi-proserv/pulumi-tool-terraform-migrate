@@ -40,10 +40,11 @@ type ModuleMap struct {
 
 // ModuleResource represents a single resource within a module instance.
 type ModuleResource struct {
-	Mode             string `json:"mode"` // "managed" or "data"
-	TranslatedURN    string `json:"translatedUrn"`
-	TerraformAddress string `json:"terraformAddress"`
-	ImportID         string `json:"importId"`
+	Mode             string                 `json:"mode"` // "managed" or "data"
+	TranslatedURN    string                 `json:"translatedUrn"`
+	TerraformAddress string                 `json:"terraformAddress"`
+	ImportID         string                 `json:"importId"`
+	Attributes       map[string]interface{} `json:"attributes,omitempty"`
 }
 
 // ModuleMapEntry represents a single module instance in the module map.
@@ -282,10 +283,10 @@ func matchResources(
 						address = module.Addr.String() + "." + address
 					}
 
-					// Extract "id" from AttrsJSON.
+					// Parse attributes from AttrsJSON.
+					var attrs map[string]interface{}
 					importID := ""
 					if inst.Current.AttrsJSON != nil {
-						var attrs map[string]interface{}
 						if err := json.Unmarshal(inst.Current.AttrsJSON, &attrs); err == nil {
 							if id, ok := attrs["id"]; ok {
 								importID = fmt.Sprintf("%v", id)
@@ -305,12 +306,20 @@ func matchResources(
 						urn = buildResourceURN(address, providerName, resourceType, pulumiProviders, stackName, projectName)
 					}
 
-					resources = append(resources, ModuleResource{
+					mr := ModuleResource{
 						Mode:             mode,
 						TranslatedURN:    urn,
 						TerraformAddress: address,
 						ImportID:         importID,
-					})
+					}
+
+					// Include full attributes for data sources so the agent
+					// can see what values are being consumed (e.g., remote state config).
+					if mode == "data" && attrs != nil {
+						mr.Attributes = attrs
+					}
+
+					resources = append(resources, mr)
 				}
 			}
 		}
