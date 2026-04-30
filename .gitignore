@@ -6,3 +6,4 @@ pulumi-tool-terraform-migrate
 
 go.work
 go.work.sum
+test-results/

@@ -22,6 +22,7 @@ import (
 	"slices"
 
 	tfjson "github.com/hashicorp/terraform-json"
+	"github.com/pulumi/opentofu/states"
 	"github.com/pulumi/pulumi-terraform-bridge/v3/pkg/tfbridge/info"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/bridgedproviders"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/providermap"
@@ -43,6 +44,16 @@ func getTerraformProvidersForTerraformState(tfState *tfjson.State) ([]providerma
 	providers := slices.Collect(maps.Keys(tfProviders))
 
 	return providers, nil
+}
+
+func getTerraformProvidersForRawState(state *states.State) []providermap.TerraformProviderName {
+	providers := map[providermap.TerraformProviderName]struct{}{}
+	for _, module := range state.Modules {
+		for _, res := range module.Resources {
+			providers[providermap.TerraformProviderName(res.ProviderConfig.Provider.String())] = struct{}{}
+		}
+	}
+	return slices.Collect(maps.Keys(providers))
 }
 
 // ProviderWithMetadata wraps a Pulumi provider info with additional metadata

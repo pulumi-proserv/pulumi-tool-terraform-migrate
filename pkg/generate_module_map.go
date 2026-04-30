@@ -16,14 +16,16 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
 	tfjson "github.com/hashicorp/terraform-json"
+	"github.com/pulumi/opentofu/addrs"
 	"github.com/pulumi/opentofu/states"
-	tofuutil "github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
 	"github.com/pulumi/opentofu/tofu"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/providermap"
+	tofuutil "github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
 )
 
 // GenerateModuleMap is the top-level orchestrator for the module-map subcommand.
@@ -44,7 +46,6 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 
 	var rawState *states.State
 	var tofuCtx *tofu.Context
-	var tfjsonState *tfjson.State
 	var pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata
 
 	switch format {
@@ -67,31 +68,30 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 			defer cleanup()
 		}
 
-		// For resource matching we need tfjson state. Load it via the tofu loader
-		// which handles .json files directly and runs tofu show -json for .tfstate files.
-		tfjsonState, err = tofuutil.LoadTerraformState(ctx, tofuutil.LoadTerraformStateOptions{
-			StateFilePath: stateFilePath,
-			ProjectDir:    tfDir,
-		})
+		// Resolve Pulumi providers from raw state.
+		tfProviders := getTerraformProvidersForRawState(rawState)
+		pulumiProviders, err = PulumiProvidersForTerraformProviders(tfProviders, nil)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not load tfjson state for resource matching: %v\n", err)
-			fmt.Fprintf(os.Stderr, "Continuing without resource URNs.\n")
-			tfjsonState = nil
+			fmt.Fprintf(os.Stderr, "Warning: could not resolve Pulumi providers: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Continuing without Pulumi URNs (will use raw Terraform addresses).\n")
+			pulumiProviders = nil
 		}
 
 	case StateFormatTofuShowJSON:
 		// Load tofu show -json output directly.
-		tfjsonState, err = tofuutil.LoadTerraformState(ctx, tofuutil.LoadTerraformStateOptions{
+		tfjsonState, err := tofuutil.LoadTerraformState(ctx, tofuutil.LoadTerraformStateOptions{
 			StateFilePath: stateFilePath,
 		})
 		if err != nil {
 			return fmt.Errorf("loading tofu show JSON state: %w", err)
 		}
-		// No raw state or evaluation context available for show-json format.
-	}
 
-	// Step 5: Resolve Pulumi providers for URN generation (graceful degradation).
-	if tfjsonState != nil {
+		// Convert tfjson state to raw state for BuildModuleMap.
+		// For tofuShowJSON format, we don't have raw state, so we build one
+		// by walking the tfjson resources.
+		rawState = rawStateFromTfjson(tfjsonState)
+
+		// Resolve Pulumi providers from tfjson state.
 		pulumiProviders, err = GetPulumiProvidersForTerraformState(tfjsonState, nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not resolve Pulumi providers: %v\n", err)
@@ -101,7 +101,7 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 	}
 
 	// Step 6: Build the module map.
-	mm, err := BuildModuleMap(config, tofuCtx, rawState, tfjsonState, pulumiProviders, stackName, projectName)
+	mm, err := BuildModuleMap(config, tofuCtx, rawState, pulumiProviders, stackName, projectName)
 	if err != nil {
 		return fmt.Errorf("building module map: %w", err)
 	}
@@ -113,4 +113,61 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 
 	fmt.Fprintf(os.Stderr, "Module map written to %s\n", outputPath)
 	return nil
+}
+
+// rawStateFromTfjson builds a synthetic *states.State from a tfjson.State.
+// This allows the StateFormatTofuShowJSON path to reuse the same BuildModuleMap
+// code that works with raw state.
+func rawStateFromTfjson(tfjsonState *tfjson.State) *states.State {
+	state := states.NewState()
+
+	tofuutil.VisitResources(tfjsonState, func(r *tfjson.StateResource) error {
+		// Parse module address from the resource address.
+		segments := parseModuleSegments(r.Address)
+		moduleAddr := addrs.RootModuleInstance
+		for _, seg := range segments {
+			if seg.key == "" {
+				moduleAddr = moduleAddr.Child(seg.name, addrs.NoKey)
+			} else if _, err := fmt.Sscanf(seg.key, "%d", new(int)); err == nil {
+				var idx int
+				fmt.Sscanf(seg.key, "%d", &idx)
+				moduleAddr = moduleAddr.Child(seg.name, addrs.IntKey(idx))
+			} else {
+				moduleAddr = moduleAddr.Child(seg.name, addrs.StringKey(seg.key))
+			}
+		}
+
+		// Parse provider.
+		provider, _ := addrs.ParseProviderSourceString(r.ProviderName)
+		providerConfig := addrs.AbsProviderConfig{
+			Provider: provider,
+		}
+
+		// Build resource address.
+		mode := addrs.ManagedResourceMode
+		if r.Mode == tfjson.DataResourceMode {
+			mode = addrs.DataResourceMode
+		}
+		resAddr := addrs.Resource{
+			Mode: mode,
+			Type: r.Type,
+			Name: r.Name,
+		}
+
+		// Serialize attribute values to JSON.
+		attrsJSON, _ := json.Marshal(r.AttributeValues)
+
+		module := state.EnsureModule(moduleAddr)
+		module.SetResourceProvider(resAddr, providerConfig)
+		module.SetResourceInstanceCurrent(
+			addrs.ResourceInstance{Resource: resAddr, Key: addrs.NoKey},
+			&states.ResourceInstanceObjectSrc{AttrsJSON: attrsJSON},
+			providerConfig,
+			nil,
+		)
+
+		return nil
+	}, &tofuutil.VisitOptions{IncludeDataSources: true})
+
+	return state
 }
