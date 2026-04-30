@@ -21,6 +21,7 @@ import (
 	"sort"
 	"testing"
 
+	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/pulumi/opentofu/addrs"
 	"github.com/pulumi/opentofu/states"
 	"github.com/stretchr/testify/assert"
@@ -407,4 +408,58 @@ func TestCtyValueToInterface(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestRawStateFromTfjson_DataSources(t *testing.T) {
+	t.Parallel()
+
+	tfjsonState := &tfjson.State{
+		FormatVersion: "1.0",
+		Values: &tfjson.StateValues{
+			RootModule: &tfjson.StateModule{
+				Resources: []*tfjson.StateResource{
+					{
+						Address:      "data.terraform_remote_state.old",
+						Mode:         tfjson.DataResourceMode,
+						Type:         "terraform_remote_state",
+						Name:         "old",
+						ProviderName: "terraform.io/builtin/terraform",
+						AttributeValues: map[string]interface{}{
+							"backend": "s3",
+						},
+					},
+					{
+						Address:      "aws_s3_bucket.example",
+						Mode:         tfjson.ManagedResourceMode,
+						Type:         "aws_s3_bucket",
+						Name:         "example",
+						ProviderName: "registry.opentofu.org/hashicorp/aws",
+						AttributeValues: map[string]interface{}{
+							"id":     "my-bucket",
+							"bucket": "my-bucket",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	state := rawStateFromTfjson(tfjsonState)
+
+	rootModule := state.RootModule()
+	require.NotNil(t, rootModule)
+
+	dataRes := rootModule.Resource(addrs.Resource{
+		Mode: addrs.DataResourceMode,
+		Type: "terraform_remote_state",
+		Name: "old",
+	})
+	require.NotNil(t, dataRes, "expected data.terraform_remote_state.old in root module")
+
+	managedRes := rootModule.Resource(addrs.Resource{
+		Mode: addrs.ManagedResourceMode,
+		Type: "aws_s3_bucket",
+		Name: "example",
+	})
+	require.NotNil(t, managedRes, "expected aws_s3_bucket.example in root module")
 }
