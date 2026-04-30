@@ -94,6 +94,12 @@ func BuildModuleMap(
 		return nil, err
 	}
 
+	// Collect root-level resources (empty segments = root module).
+	rootResources := matchResources(state, nil, pulumiProviders, stackName, projectName)
+	if len(rootResources) > 0 {
+		mm.RootResources = rootResources
+	}
+
 	return mm, nil
 }
 

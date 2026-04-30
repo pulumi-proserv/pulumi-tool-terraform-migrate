@@ -18,8 +18,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
+	"github.com/pulumi/opentofu/addrs"
+	"github.com/pulumi/opentofu/states"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
@@ -186,6 +189,85 @@ func TestWriteModuleMap(t *testing.T) {
 	require.NotNil(t, got.Modules["vpc"].Interface)
 	assert.Len(t, got.Modules["vpc"].Interface.Inputs, 1)
 	assert.Equal(t, "cidr", got.Modules["vpc"].Interface.Inputs[0].Name)
+}
+
+func TestBuildModuleMap_RootResources(t *testing.T) {
+	t.Parallel()
+	tfDir, err := filepath.Abs(filepath.Join("testdata", "tf_indexed_modules"))
+	require.NoError(t, err)
+
+	config, err := LoadConfig(tfDir)
+	require.NoError(t, err)
+
+	rawState, err := LoadRawState(filepath.Join(tfDir, "terraform.tfstate"))
+	require.NoError(t, err)
+
+	// Add a root-level managed resource to the existing state.
+	rootModule := rawState.RootModule()
+	rootModule.SetResourceInstanceCurrent(
+		addrs.ResourceInstance{
+			Resource: addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "aws_s3_bucket",
+				Name: "example",
+			},
+			Key: addrs.NoKey,
+		},
+		&states.ResourceInstanceObjectSrc{
+			AttrsJSON: []byte(`{"id":"my-bucket","bucket":"my-bucket"}`),
+		},
+		addrs.AbsProviderConfig{
+			Provider: addrs.MustParseProviderSourceString("registry.opentofu.org/hashicorp/aws"),
+		},
+		nil,
+	)
+
+	// Add a root-level data source.
+	rootModule.SetResourceInstanceCurrent(
+		addrs.ResourceInstance{
+			Resource: addrs.Resource{
+				Mode: addrs.DataResourceMode,
+				Type: "terraform_remote_state",
+				Name: "old",
+			},
+			Key: addrs.NoKey,
+		},
+		&states.ResourceInstanceObjectSrc{
+			AttrsJSON: []byte(`{"backend":"s3"}`),
+		},
+		addrs.AbsProviderConfig{
+			Provider: addrs.MustParseProviderSourceString("terraform.io/builtin/terraform"),
+		},
+		nil,
+	)
+
+	mm, err := BuildModuleMap(config, nil, rawState, nil, "test-stack", "test-project")
+	require.NoError(t, err)
+	require.NotNil(t, mm)
+
+	// Module resources should still work.
+	require.Contains(t, mm.Modules, "pet[0]")
+
+	// Root resources should be populated.
+	require.NotNil(t, mm.RootResources)
+	require.Len(t, mm.RootResources, 2)
+
+	// Sort by address for deterministic assertion.
+	sort.Slice(mm.RootResources, func(i, j int) bool {
+		return mm.RootResources[i].TerraformAddress < mm.RootResources[j].TerraformAddress
+	})
+
+	// Managed resource — URN falls back to raw address when pulumiProviders is nil.
+	assert.Equal(t, "managed", mm.RootResources[0].Mode)
+	assert.Equal(t, "aws_s3_bucket.example", mm.RootResources[0].TranslatedURN)
+	assert.Equal(t, "aws_s3_bucket.example", mm.RootResources[0].TerraformAddress)
+	assert.Equal(t, "my-bucket", mm.RootResources[0].ImportID)
+
+	// Data source — URN should be empty.
+	assert.Equal(t, "data", mm.RootResources[1].Mode)
+	assert.Equal(t, "data.terraform_remote_state.old", mm.RootResources[1].TerraformAddress)
+	assert.Equal(t, "", mm.RootResources[1].TranslatedURN)
+	assert.Equal(t, "", mm.RootResources[1].ImportID) // no "id" attribute
 }
 
 func TestCtyValueToInterface(t *testing.T) {
