@@ -23,24 +23,24 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/pulumi/opentofu/addrs"
 	"github.com/pulumi/opentofu/configs"
 	"github.com/pulumi/opentofu/states"
 	"github.com/pulumi/opentofu/tofu"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/bridge"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/providermap"
-	tofuutil "github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
 	"github.com/zclconf/go-cty/cty"
 )
 
 // ModuleMap is the top-level structure for the module-map.json sidecar file.
 type ModuleMap struct {
-	Modules map[string]*ModuleMapEntry `json:"modules"`
+	Modules       map[string]*ModuleMapEntry `json:"modules"`
+	RootResources []ModuleResource           `json:"rootResources,omitempty"`
 }
 
 // ModuleResource represents a single resource within a module instance.
 type ModuleResource struct {
+	Mode             string `json:"mode"` // "managed" or "data"
 	TranslatedURN    string `json:"translatedUrn"`
 	TerraformAddress string `json:"terraformAddress"`
 	ImportID         string `json:"importId"`
@@ -81,7 +81,6 @@ func BuildModuleMap(
 	config *configs.Config,
 	tofuCtx *tofu.Context,
 	state *states.State,
-	tfjsonState *tfjson.State,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
 	stackName string,
 	projectName string,
@@ -90,7 +89,7 @@ func BuildModuleMap(
 		Modules: make(map[string]*ModuleMapEntry),
 	}
 
-	err := buildModuleMapLevel(mm.Modules, config, tofuCtx, state, tfjsonState, pulumiProviders, stackName, projectName, nil)
+	err := buildModuleMapLevel(mm.Modules, config, tofuCtx, state, pulumiProviders, stackName, projectName, nil) //nolint:lll
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +104,6 @@ func buildModuleMapLevel(
 	config *configs.Config,
 	tofuCtx *tofu.Context,
 	state *states.State,
-	tfjsonState *tfjson.State,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
 	stackName string,
 	projectName string,
@@ -117,7 +115,7 @@ func buildModuleMapLevel(
 
 	for name, call := range config.Module.ModuleCalls {
 		// Discover instances of this module from state.
-		instances := discoverModuleInstances(tfjsonState, parentSegments, name)
+		instances := discoverModuleInstances(state, parentSegments, name)
 
 		// Get call-site expression text for each attribute.
 		callExpressions := getCallExpressions(call)
@@ -136,7 +134,7 @@ func buildModuleMapLevel(
 				TerraformPath: buildModulePath(segments),
 				Source:        call.SourceAddrRaw,
 				IndexKey:      inst.key,
-				Resources:     matchResources(tfjsonState, segments, pulumiProviders, stackName, projectName),
+				Resources:     matchResources(state, segments, pulumiProviders, stackName, projectName),
 			}
 
 			// Determine index type.
@@ -163,7 +161,7 @@ func buildModuleMapLevel(
 			if childConfig != nil && len(childConfig.Module.ModuleCalls) > 0 {
 				entry.Modules = make(map[string]*ModuleMapEntry)
 				err := buildModuleMapLevel(
-					entry.Modules, childConfig, tofuCtx, state, tfjsonState,
+					entry.Modules, childConfig, tofuCtx, state,
 					pulumiProviders, stackName, projectName, segments,
 				)
 				if err != nil {
@@ -186,40 +184,46 @@ type moduleInstance struct {
 	key string // empty for non-indexed, "0"/"1" for count, "key" for for_each
 }
 
-// discoverModuleInstances finds unique module instances from tfjson state that match
+// discoverModuleInstances finds unique module instances from raw state that match
 // the given parent path and module name.
-func discoverModuleInstances(tfjsonState *tfjson.State, parentSegments []moduleSegment, moduleName string) []moduleInstance {
+func discoverModuleInstances(state *states.State, parentSegments []moduleSegment, moduleName string) []moduleInstance {
 	seen := map[string]bool{}
 	var instances []moduleInstance
 
 	parentDepth := len(parentSegments)
 
-	tofuutil.VisitResources(tfjsonState, func(r *tfjson.StateResource) error {
-		segments := parseModuleSegments(r.Address)
-		if len(segments) <= parentDepth {
-			return nil
-		}
+	if state != nil {
+		for _, module := range state.Modules {
+			segments := moduleSegmentsFromAddr(module.Addr)
+			if len(segments) <= parentDepth {
+				continue
+			}
 
-		// Check that parent path matches.
-		for i, ps := range parentSegments {
-			if segments[i].name != ps.name || segments[i].key != ps.key {
-				return nil
+			// Check that parent path matches.
+			match := true
+			for i, ps := range parentSegments {
+				if segments[i].name != ps.name || segments[i].key != ps.key {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+
+			// Check that the next segment matches our module name.
+			seg := segments[parentDepth]
+			if seg.name != moduleName {
+				continue
+			}
+
+			instanceKey := seg.key
+			if !seen[instanceKey] {
+				seen[instanceKey] = true
+				instances = append(instances, moduleInstance{key: instanceKey})
 			}
 		}
-
-		// Check that the next segment matches our module name.
-		seg := segments[parentDepth]
-		if seg.name != moduleName {
-			return nil
-		}
-
-		instanceKey := seg.key
-		if !seen[instanceKey] {
-			seen[instanceKey] = true
-			instances = append(instances, moduleInstance{key: instanceKey})
-		}
-		return nil
-	}, &tofuutil.VisitOptions{})
+	}
 
 	// Sort instances for deterministic output.
 	sort.Slice(instances, func(i, j int) bool {
@@ -235,10 +239,10 @@ func discoverModuleInstances(tfjsonState *tfjson.State, parentSegments []moduleS
 	return instances
 }
 
-// matchResources finds resources in tfjsonState that belong to the given module instance
+// matchResources finds resources in raw state that belong to the given module instance
 // and returns ModuleResource entries with URN, Terraform address, and import ID.
 func matchResources(
-	tfjsonState *tfjson.State,
+	state *states.State,
 	segments []moduleSegment,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
 	stackName string,
@@ -247,31 +251,64 @@ func matchResources(
 	var resources []ModuleResource
 	modulePath := buildModulePath(segments)
 
-	tofuutil.VisitResources(tfjsonState, func(r *tfjson.StateResource) error {
-		resSegments := parseModuleSegments(r.Address)
-		if len(resSegments) != len(segments) {
-			return nil
-		}
+	if state != nil {
+		for _, module := range state.Modules {
+			modSegments := moduleSegmentsFromAddr(module.Addr)
+			if buildModulePath(modSegments) != modulePath {
+				continue
+			}
 
-		resModulePath := buildModulePath(resSegments)
-		if resModulePath != modulePath {
-			return nil
-		}
+			for _, res := range module.Resources {
+				providerName := res.ProviderConfig.Provider.String()
+				resourceType := res.Addr.Resource.Type
 
-		urn := buildResourceURN(r, pulumiProviders, stackName, projectName)
-		importID := ""
-		if r.AttributeValues != nil {
-			if id, ok := r.AttributeValues["id"]; ok {
-				importID = fmt.Sprintf("%v", id)
+				for instKey, inst := range res.Instances {
+					if inst.Current == nil {
+						continue
+					}
+
+					// Build the full address: module path + resource address + instance key
+					address := res.Addr.Resource.String()
+					if instKey != nil {
+						address += instKey.String()
+					}
+					if len(module.Addr) > 0 {
+						address = module.Addr.String() + "." + address
+					}
+
+					// Extract "id" from AttrsJSON.
+					importID := ""
+					if inst.Current.AttrsJSON != nil {
+						var attrs map[string]interface{}
+						if err := json.Unmarshal(inst.Current.AttrsJSON, &attrs); err == nil {
+							if id, ok := attrs["id"]; ok {
+								importID = fmt.Sprintf("%v", id)
+							}
+						}
+					}
+
+					// Determine mode string.
+					mode := "managed"
+					if res.Addr.Resource.Mode == addrs.DataResourceMode {
+						mode = "data"
+					}
+
+					// Data sources don't map to Pulumi resources.
+					urn := ""
+					if mode == "managed" {
+						urn = buildResourceURN(address, providerName, resourceType, pulumiProviders, stackName, projectName)
+					}
+
+					resources = append(resources, ModuleResource{
+						Mode:             mode,
+						TranslatedURN:    urn,
+						TerraformAddress: address,
+						ImportID:         importID,
+					})
+				}
 			}
 		}
-		resources = append(resources, ModuleResource{
-			TranslatedURN:    urn,
-			TerraformAddress: r.Address,
-			ImportID:         importID,
-		})
-		return nil
-	}, &tofuutil.VisitOptions{})
+	}
 
 	if resources == nil {
 		resources = []ModuleResource{}
@@ -282,26 +319,28 @@ func matchResources(
 // buildResourceURN constructs a Pulumi URN for a Terraform resource, or falls back
 // to the raw Terraform address if provider mapping is unavailable.
 func buildResourceURN(
-	r *tfjson.StateResource,
+	address string,
+	providerName string,
+	resourceType string,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
 	stackName string,
 	projectName string,
 ) string {
 	if pulumiProviders == nil {
-		return r.Address
+		return address
 	}
 
-	prov, ok := pulumiProviders[providermap.TerraformProviderName(r.ProviderName)]
+	prov, ok := pulumiProviders[providermap.TerraformProviderName(providerName)]
 	if !ok {
-		return r.Address
+		return address
 	}
 
-	typeToken, err := bridge.PulumiTypeToken(r.Type, prov.Provider)
+	typeToken, err := bridge.PulumiTypeToken(resourceType, prov.Provider)
 	if err != nil {
-		return r.Address
+		return address
 	}
 
-	pulumiName := PulumiNameFromTerraformAddress(r.Address, r.Type)
+	pulumiName := PulumiNameFromTerraformAddress(address, resourceType)
 	return fmt.Sprintf("urn:pulumi:%s::%s::%s::%s", stackName, projectName, typeToken, pulumiName)
 }
 

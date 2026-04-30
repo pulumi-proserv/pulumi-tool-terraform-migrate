@@ -20,20 +20,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
-
-func loadTofuShowJSON(t *testing.T, path string) *tfjson.State {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	var state tfjson.State
-	require.NoError(t, json.Unmarshal(data, &state))
-	return &state
-}
 
 func TestBuildModuleMap_WithoutEval(t *testing.T) {
 	t.Parallel()
@@ -43,11 +33,12 @@ func TestBuildModuleMap_WithoutEval(t *testing.T) {
 	config, err := LoadConfig(tfDir)
 	require.NoError(t, err)
 
-	tfjsonState := loadTofuShowJSON(t, filepath.Join("testdata", "tofu_state_indexed_modules.json"))
+	rawState, err := LoadRawState(filepath.Join(tfDir, "terraform.tfstate"))
+	require.NoError(t, err)
 
-	// Build without eval (nil tofuCtx, nil state) — no pulumiProviders needed for URN
+	// Build without eval (nil tofuCtx) — no pulumiProviders needed for URN
 	// generation in this test since we just check structure.
-	mm, err := BuildModuleMap(config, nil, nil, tfjsonState, nil, "test-stack", "test-project")
+	mm, err := BuildModuleMap(config, nil, rawState, nil, "test-stack", "test-project")
 	require.NoError(t, err)
 	require.NotNil(t, mm)
 
@@ -67,13 +58,15 @@ func TestBuildModuleMap_WithoutEval(t *testing.T) {
 
 	// Resources should be populated (without provider mapping, URNs will be raw addresses).
 	assert.Len(t, pet0.Resources, 1)
+	assert.Equal(t, "managed", pet0.Resources[0].Mode)
 	assert.Equal(t, "module.pet[0].random_pet.this", pet0.Resources[0].TranslatedURN) // falls back to address
 	assert.Equal(t, "module.pet[0].random_pet.this", pet0.Resources[0].TerraformAddress)
-	assert.Equal(t, "test-0-creative-doberman", pet0.Resources[0].ImportID)
+	assert.Equal(t, "test-0-just-phoenix", pet0.Resources[0].ImportID)
 
 	assert.Len(t, pet1.Resources, 1)
+	assert.Equal(t, "managed", pet1.Resources[0].Mode)
 	assert.Equal(t, "module.pet[1].random_pet.this", pet1.Resources[0].TerraformAddress)
-	assert.Equal(t, "test-1-outgoing-spaniel", pet1.Resources[0].ImportID)
+	assert.Equal(t, "test-1-brief-jennet", pet1.Resources[0].ImportID)
 
 	// Interface should be populated from config.
 	require.NotNil(t, pet0.Interface)
@@ -103,13 +96,11 @@ func TestBuildModuleMap_WithEval(t *testing.T) {
 	rawState, err := LoadRawState(filepath.Join(tfDir, "terraform.tfstate"))
 	require.NoError(t, err)
 
-	tfjsonState := loadTofuShowJSON(t, filepath.Join("testdata", "tofu_state_indexed_modules.json"))
-
 	tofuCtx, cleanup, err := Evaluate(config, rawState, tfDir)
 	require.NoError(t, err)
 	defer cleanup()
 
-	mm, err := BuildModuleMap(config, tofuCtx, rawState, tfjsonState, nil, "test-stack", "test-project")
+	mm, err := BuildModuleMap(config, tofuCtx, rawState, nil, "test-stack", "test-project")
 	require.NoError(t, err)
 	require.NotNil(t, mm)
 
@@ -135,9 +126,10 @@ func TestBuildModuleMap_Expression(t *testing.T) {
 	config, err := LoadConfig(tfDir)
 	require.NoError(t, err)
 
-	tfjsonState := loadTofuShowJSON(t, filepath.Join("testdata", "tofu_state_indexed_modules.json"))
+	rawState, err := LoadRawState(filepath.Join(tfDir, "terraform.tfstate"))
+	require.NoError(t, err)
 
-	mm, err := BuildModuleMap(config, nil, nil, tfjsonState, nil, "test-stack", "test-project")
+	mm, err := BuildModuleMap(config, nil, rawState, nil, "test-stack", "test-project")
 	require.NoError(t, err)
 
 	pet0 := mm.Modules["pet[0]"]
@@ -157,10 +149,11 @@ func TestWriteModuleMap(t *testing.T) {
 				TerraformPath: "module.vpc",
 				Source:        "./modules/vpc",
 				Resources: []ModuleResource{{
-				TranslatedURN:    "urn:pulumi:stack::project::aws:ec2/vpc:Vpc::main",
-				TerraformAddress: "module.vpc.aws_vpc.main",
-				ImportID:         "vpc-12345",
-			}},
+					Mode:             "managed",
+					TranslatedURN:    "urn:pulumi:stack::project::aws:ec2/vpc:Vpc::main",
+					TerraformAddress: "module.vpc.aws_vpc.main",
+					ImportID:         "vpc-12345",
+				}},
 				Interface: &ModuleInterface{
 					Inputs:  []ModuleInterfaceField{{Name: "cidr", Required: true}},
 					Outputs: []ModuleInterfaceField{{Name: "id"}},
@@ -189,6 +182,7 @@ func TestWriteModuleMap(t *testing.T) {
 	assert.Equal(t, "urn:pulumi:stack::project::aws:ec2/vpc:Vpc::main", got.Modules["vpc"].Resources[0].TranslatedURN)
 	assert.Equal(t, "module.vpc.aws_vpc.main", got.Modules["vpc"].Resources[0].TerraformAddress)
 	assert.Equal(t, "vpc-12345", got.Modules["vpc"].Resources[0].ImportID)
+	assert.Equal(t, "managed", got.Modules["vpc"].Resources[0].Mode)
 	require.NotNil(t, got.Modules["vpc"].Interface)
 	assert.Len(t, got.Modules["vpc"].Interface.Inputs, 1)
 	assert.Equal(t, "cidr", got.Modules["vpc"].Interface.Inputs[0].Name)
