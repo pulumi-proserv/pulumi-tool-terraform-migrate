@@ -163,6 +163,20 @@ func TestWriteModuleMap(t *testing.T) {
 				},
 			},
 		},
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:stack::project::aws:s3/bucket:Bucket::example",
+				TerraformAddress: "aws_s3_bucket.example",
+				ImportID:         "my-bucket",
+			},
+			{
+				Mode:             "data",
+				TranslatedURN:    "",
+				TerraformAddress: "data.terraform_remote_state.old",
+				ImportID:         "",
+			},
+		},
 	}
 
 	tmpDir := t.TempDir()
@@ -189,6 +203,15 @@ func TestWriteModuleMap(t *testing.T) {
 	require.NotNil(t, got.Modules["vpc"].Interface)
 	assert.Len(t, got.Modules["vpc"].Interface.Inputs, 1)
 	assert.Equal(t, "cidr", got.Modules["vpc"].Interface.Inputs[0].Name)
+
+	// Root resources round-trip.
+	require.Len(t, got.RootResources, 2)
+	assert.Equal(t, "managed", got.RootResources[0].Mode)
+	assert.Equal(t, "aws_s3_bucket.example", got.RootResources[0].TerraformAddress)
+	assert.Equal(t, "my-bucket", got.RootResources[0].ImportID)
+	assert.Equal(t, "data", got.RootResources[1].Mode)
+	assert.Equal(t, "", got.RootResources[1].TranslatedURN)
+	assert.Equal(t, "data.terraform_remote_state.old", got.RootResources[1].TerraformAddress)
 }
 
 func TestBuildModuleMap_RootResources(t *testing.T) {
@@ -268,6 +291,76 @@ func TestBuildModuleMap_RootResources(t *testing.T) {
 	assert.Equal(t, "data.terraform_remote_state.old", mm.RootResources[1].TerraformAddress)
 	assert.Equal(t, "", mm.RootResources[1].TranslatedURN)
 	assert.Equal(t, "", mm.RootResources[1].ImportID) // no "id" attribute
+}
+
+func TestBuildModuleMap_DataSources(t *testing.T) {
+	t.Parallel()
+	tfDir, err := filepath.Abs(filepath.Join("testdata", "tf_indexed_modules"))
+	require.NoError(t, err)
+
+	config, err := LoadConfig(tfDir)
+	require.NoError(t, err)
+
+	rawState, err := LoadRawState(filepath.Join(tfDir, "terraform.tfstate"))
+	require.NoError(t, err)
+
+	// Add a data source inside module.pet[0].
+	petModule := rawState.Module(addrs.RootModuleInstance.Child("pet", addrs.IntKey(0)))
+	require.NotNil(t, petModule)
+
+	petModule.SetResourceInstanceCurrent(
+		addrs.ResourceInstance{
+			Resource: addrs.Resource{
+				Mode: addrs.DataResourceMode,
+				Type: "aws_caller_identity",
+				Name: "current",
+			},
+			Key: addrs.NoKey,
+		},
+		&states.ResourceInstanceObjectSrc{
+			AttrsJSON: []byte(`{"account_id":"123456789","id":"123456789"}`),
+		},
+		addrs.AbsProviderConfig{
+			Provider: addrs.MustParseProviderSourceString("registry.opentofu.org/hashicorp/aws"),
+		},
+		nil,
+	)
+
+	mm, err := BuildModuleMap(config, nil, rawState, nil, "test-stack", "test-project")
+	require.NoError(t, err)
+
+	pet0 := mm.Modules["pet[0]"]
+	require.NotNil(t, pet0)
+
+	// Should have 2 resources: the managed random_pet and the data source.
+	require.Len(t, pet0.Resources, 2)
+
+	// Find the data source entry.
+	var dataRes *ModuleResource
+	for i := range pet0.Resources {
+		if pet0.Resources[i].Mode == "data" {
+			dataRes = &pet0.Resources[i]
+			break
+		}
+	}
+	require.NotNil(t, dataRes, "expected a data source in pet[0] resources")
+
+	assert.Equal(t, "data", dataRes.Mode)
+	assert.Equal(t, "module.pet[0].data.aws_caller_identity.current", dataRes.TerraformAddress)
+	assert.Equal(t, "", dataRes.TranslatedURN)
+	assert.Equal(t, "123456789", dataRes.ImportID)
+
+	// The managed resource should still be there.
+	var managedRes *ModuleResource
+	for i := range pet0.Resources {
+		if pet0.Resources[i].Mode == "managed" {
+			managedRes = &pet0.Resources[i]
+			break
+		}
+	}
+	require.NotNil(t, managedRes)
+	assert.Equal(t, "managed", managedRes.Mode)
+	assert.Equal(t, "module.pet[0].random_pet.this", managedRes.TerraformAddress)
 }
 
 func TestCtyValueToInterface(t *testing.T) {
