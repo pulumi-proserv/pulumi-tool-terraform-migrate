@@ -47,25 +47,27 @@ const (
 	StateFormatTofuShowJSON
 )
 
-// DetectStateFormat auto-detects whether the file at path is a raw .tfstate
-// or the JSON output of `tofu show -json`. Raw tfstate files have a top-level
-// "version" key but no "format_version" key, while tofu show JSON has a
-// "format_version" key.
-func DetectStateFormat(path string) (StateFormat, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, fmt.Errorf("reading state file %s: %w", path, err)
-	}
-
+// DetectStateFormatBytes auto-detects whether the data is a raw .tfstate
+// or the JSON output of `tofu show -json`.
+func DetectStateFormatBytes(data []byte) (StateFormat, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil {
-		return 0, fmt.Errorf("parsing state file %s as JSON: %w", path, err)
+		return 0, fmt.Errorf("parsing state as JSON: %w", err)
 	}
 
 	if _, hasFormatVersion := top["format_version"]; hasFormatVersion {
 		return StateFormatTofuShowJSON, nil
 	}
 	return StateFormatRaw, nil
+}
+
+// DetectStateFormat reads a state file from disk and detects its format.
+func DetectStateFormat(path string) (StateFormat, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, fmt.Errorf("reading state file %s: %w", path, err)
+	}
+	return DetectStateFormatBytes(data)
 }
 
 // LoadConfig loads a Terraform/OpenTofu configuration from the given directory.
@@ -139,18 +141,22 @@ func LoadConfig(tfDir string) (*configs.Config, error) {
 	return config, nil
 }
 
-// LoadRawState loads a raw .tfstate file into a *states.State.
+// LoadRawStateBytes parses raw .tfstate bytes into a *states.State.
+func LoadRawStateBytes(data []byte) (*states.State, error) {
+	sf, err := statefile.Read(bytes.NewReader(data), encryption.StateEncryptionDisabled())
+	if err != nil {
+		return nil, fmt.Errorf("parsing state: %w", err)
+	}
+	return sf.State, nil
+}
+
+// LoadRawState reads a raw .tfstate file from disk.
 func LoadRawState(path string) (*states.State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading state file %s: %w", path, err)
 	}
-
-	sf, err := statefile.Read(bytes.NewReader(data), encryption.StateEncryptionDisabled())
-	if err != nil {
-		return nil, fmt.Errorf("parsing state file %s: %w", path, err)
-	}
-	return sf.State, nil
+	return LoadRawStateBytes(data)
 }
 
 // LoadProviders discovers provider plugins from the .terraform/providers/
