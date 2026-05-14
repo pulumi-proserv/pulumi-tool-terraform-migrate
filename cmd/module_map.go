@@ -53,7 +53,7 @@ the output. If evaluation fails, the tool continues gracefully without
 evaluated values.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := pkg.GenerateModuleMap(cmd.Context(), from, stateFile, out, pulumiStack, pulumiProject)
+			err := pkg.GenerateModuleMap(cmd.Context(), from, stateFile, out, pulumiStack, pulumiProject, nil)
 			if err != nil {
 				return fmt.Errorf("failed to generate module map: %w", err)
 			}

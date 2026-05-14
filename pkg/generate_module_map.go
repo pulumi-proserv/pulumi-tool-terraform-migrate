@@ -25,21 +25,52 @@ import (
 	"github.com/pulumi/opentofu/states"
 	"github.com/pulumi/opentofu/tofu"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/providermap"
+	tfcpkg "github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tfc"
 	tofuutil "github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
 )
+
+// RemoteStateOptions configures pulling state from a TFC-compatible API.
+type RemoteStateOptions struct {
+	Hostname     string
+	Organization string
+	Workspace    string
+	Token        string
+}
 
 // GenerateModuleMap is the top-level orchestrator for the module-map subcommand.
 // It loads Terraform configuration and state, resolves Pulumi providers, builds a
 // ModuleMap, and writes it to outputPath.
-func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, stackName, projectName string) error {
+func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, stackName, projectName string, remote *RemoteStateOptions) error {
+	if stateFilePath != "" && remote != nil {
+		return fmt.Errorf("stateFilePath and remote are mutually exclusive")
+	}
+
 	// Step 1: Load Terraform/OpenTofu configuration.
 	config, err := LoadConfig(tfDir)
 	if err != nil {
 		return fmt.Errorf("loading config from %s: %w", tfDir, err)
 	}
 
-	// Step 2: Detect state file format.
-	format, err := DetectStateFormat(stateFilePath)
+	// Step 2: Load state bytes.
+	var stateData []byte
+	if remote != nil {
+		tfcClient := &tfcpkg.Client{
+			Hostname: remote.Hostname,
+			Token:    remote.Token,
+		}
+		stateData, err = tfcClient.StatePull(ctx, remote.Organization, remote.Workspace)
+		if err != nil {
+			return fmt.Errorf("pulling remote state: %w", err)
+		}
+	} else {
+		stateData, err = os.ReadFile(stateFilePath)
+		if err != nil {
+			return fmt.Errorf("reading state file %s: %w", stateFilePath, err)
+		}
+	}
+
+	// Step 3: Detect format and parse.
+	format, err := DetectStateFormatBytes(stateData)
 	if err != nil {
 		return fmt.Errorf("detecting state format: %w", err)
 	}
@@ -50,13 +81,11 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 
 	switch format {
 	case StateFormatRaw:
-		// Load raw tfstate for evaluation.
-		rawState, err = LoadRawState(stateFilePath)
+		rawState, err = LoadRawStateBytes(stateData)
 		if err != nil {
 			return fmt.Errorf("loading raw state: %w", err)
 		}
 
-		// Create tofu context for expression evaluation (graceful degradation).
 		var cleanup func()
 		tofuCtx, cleanup, err = Evaluate(config, rawState, tfDir)
 		if err != nil {
@@ -68,7 +97,6 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 			defer cleanup()
 		}
 
-		// Resolve Pulumi providers from raw state.
 		tfProviders := getTerraformProvidersForRawState(rawState)
 		pulumiProviders, err = PulumiProvidersForTerraformProviders(tfProviders, nil)
 		if err != nil {
@@ -78,21 +106,14 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 		}
 
 	case StateFormatTofuShowJSON:
-		// Load tofu show -json output directly.
-		tfjsonState, err := tofuutil.LoadTerraformState(ctx, tofuutil.LoadTerraformStateOptions{
-			StateFilePath: stateFilePath,
-		})
-		if err != nil {
-			return fmt.Errorf("loading tofu show JSON state: %w", err)
+		var tfjsonState tfjson.State
+		if err := json.Unmarshal(stateData, &tfjsonState); err != nil {
+			return fmt.Errorf("parsing tofu show JSON state: %w", err)
 		}
 
-		// Convert tfjson state to raw state for BuildModuleMap.
-		// For tofuShowJSON format, we don't have raw state, so we build one
-		// by walking the tfjson resources.
-		rawState = rawStateFromTfjson(tfjsonState)
+		rawState = rawStateFromTfjson(&tfjsonState)
 
-		// Resolve Pulumi providers from tfjson state.
-		pulumiProviders, err = GetPulumiProvidersForTerraformState(tfjsonState, nil)
+		pulumiProviders, err = GetPulumiProvidersForTerraformState(&tfjsonState, nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not resolve Pulumi providers: %v\n", err)
 			fmt.Fprintf(os.Stderr, "Continuing without Pulumi URNs (will use raw Terraform addresses).\n")
