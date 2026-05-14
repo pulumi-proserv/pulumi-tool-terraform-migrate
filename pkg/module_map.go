@@ -40,10 +40,11 @@ type ModuleMap struct {
 
 // ModuleResource represents a single resource within a module instance.
 type ModuleResource struct {
-	Mode             string `json:"mode"` // "managed" or "data"
-	TranslatedURN    string `json:"translatedUrn"`
-	TerraformAddress string `json:"terraformAddress"`
-	ImportID         string `json:"importId"`
+	Mode             string                 `json:"mode"` // "managed" or "data"
+	TranslatedURN    string                 `json:"translatedUrn"`
+	TerraformAddress string                 `json:"terraformAddress"`
+	ImportID         string                 `json:"importId"`
+	Attributes       map[string]interface{} `json:"attributes,omitempty"`
 }
 
 // ModuleMapEntry represents a single module instance in the module map.
@@ -82,6 +83,7 @@ func BuildModuleMap(
 	tofuCtx *tofu.Context,
 	state *states.State,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
+	sensitivityMap SensitivityMap,
 	stackName string,
 	projectName string,
 ) (*ModuleMap, error) {
@@ -89,13 +91,13 @@ func BuildModuleMap(
 		Modules: make(map[string]*ModuleMapEntry),
 	}
 
-	err := buildModuleMapLevel(mm.Modules, config, tofuCtx, state, pulumiProviders, stackName, projectName, nil) //nolint:lll
+	err := buildModuleMapLevel(mm.Modules, config, tofuCtx, state, pulumiProviders, sensitivityMap, stackName, projectName, nil) //nolint:lll
 	if err != nil {
 		return nil, err
 	}
 
 	// Collect root-level resources (empty segments = root module).
-	rootResources := matchResources(state, nil, pulumiProviders, stackName, projectName)
+	rootResources := matchResources(state, nil, pulumiProviders, sensitivityMap, stackName, projectName)
 	if len(rootResources) > 0 {
 		mm.RootResources = rootResources
 	}
@@ -111,6 +113,7 @@ func buildModuleMapLevel(
 	tofuCtx *tofu.Context,
 	state *states.State,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
+	sensitivityMap SensitivityMap,
 	stackName string,
 	projectName string,
 	parentSegments []moduleSegment,
@@ -140,7 +143,7 @@ func buildModuleMapLevel(
 				TerraformPath: buildModulePath(segments),
 				Source:        call.SourceAddrRaw,
 				IndexKey:      inst.key,
-				Resources:     matchResources(state, segments, pulumiProviders, stackName, projectName),
+				Resources:     matchResources(state, segments, pulumiProviders, sensitivityMap, stackName, projectName),
 			}
 
 			// Determine index type.
@@ -168,7 +171,7 @@ func buildModuleMapLevel(
 				entry.Modules = make(map[string]*ModuleMapEntry)
 				err := buildModuleMapLevel(
 					entry.Modules, childConfig, tofuCtx, state,
-					pulumiProviders, stackName, projectName, segments,
+					pulumiProviders, sensitivityMap, stackName, projectName, segments,
 				)
 				if err != nil {
 					return err
@@ -251,6 +254,7 @@ func matchResources(
 	state *states.State,
 	segments []moduleSegment,
 	pulumiProviders map[providermap.TerraformProviderName]*ProviderWithMetadata,
+	sensitivityMap SensitivityMap,
 	stackName string,
 	projectName string,
 ) []ModuleResource {
@@ -282,10 +286,10 @@ func matchResources(
 						address = module.Addr.String() + "." + address
 					}
 
-					// Extract "id" from AttrsJSON.
+					// Parse attributes from AttrsJSON.
+					var attrs map[string]interface{}
 					importID := ""
 					if inst.Current.AttrsJSON != nil {
-						var attrs map[string]interface{}
 						if err := json.Unmarshal(inst.Current.AttrsJSON, &attrs); err == nil {
 							if id, ok := attrs["id"]; ok {
 								importID = fmt.Sprintf("%v", id)
@@ -305,12 +309,26 @@ func matchResources(
 						urn = buildResourceURN(address, providerName, resourceType, pulumiProviders, stackName, projectName)
 					}
 
-					resources = append(resources, ModuleResource{
+					mr := ModuleResource{
 						Mode:             mode,
 						TranslatedURN:    urn,
 						TerraformAddress: address,
 						ImportID:         importID,
-					})
+					}
+
+					// Include attributes for all resources.
+					// Data sources: full attributes. Managed resources: redact sensitive.
+					if attrs != nil {
+						if mode == "data" {
+							mr.Attributes = attrs
+						} else if sensitivityMap != nil {
+							mr.Attributes = RedactSensitiveAttributes(attrs, sensitivityMap[resourceType])
+						} else {
+							mr.Attributes = attrs
+						}
+					}
+
+					resources = append(resources, mr)
 				}
 			}
 		}
