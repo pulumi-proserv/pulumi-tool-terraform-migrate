@@ -58,10 +58,10 @@ Examples:
   # From a TFC-compatible remote (Scalr, TFC, TFE)
   pulumi-terraform-migrate module-map \
     --from path/to/terraform-sources \
-    --hostname veridos-america.scalr.io \
-    --organization valid \
-    --workspace dmvhm-infrastructure-develop \
-    --token-env SCALR_TOKEN \
+    --hostname app.terraform.io \
+    --organization my-org \
+    --workspace my-workspace-dev \
+    --token-env TFC_TOKEN \
     --out /tmp/module-map.json \
     --pulumi-stack dev \
     --pulumi-project myproject
