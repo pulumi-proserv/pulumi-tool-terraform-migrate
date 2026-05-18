@@ -40,7 +40,13 @@ type RemoteStateOptions struct {
 // GenerateModuleMap is the top-level orchestrator for the module-map subcommand.
 // It loads Terraform configuration and state, resolves Pulumi providers, builds a
 // ModuleMap, and writes it to outputPath.
-func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, stackName, projectName string, remote *RemoteStateOptions) error {
+// SecretsOptions configures the automatic secret extraction from state.
+type SecretsOptions struct {
+	ProjectDir string
+	Skip       bool
+}
+
+func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, stackName, projectName string, remote *RemoteStateOptions, secrets *SecretsOptions) error {
 	if stateFilePath != "" && remote != nil {
 		return fmt.Errorf("stateFilePath and remote are mutually exclusive")
 	}
@@ -167,6 +173,21 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 	}
 
 	fmt.Fprintf(os.Stderr, "Module map written to %s\n", outputPath)
+
+	// Step 8: Set sensitive attributes as Pulumi config secrets.
+	if secrets != nil && !secrets.Skip {
+		fmt.Fprintf(os.Stderr, "[8] Discovering sensitive attributes...\n")
+		sensitiveSecrets := DiscoverSensitiveSecrets(rawState)
+		if len(sensitiveSecrets) > 0 {
+			fmt.Fprintf(os.Stderr, "  Found %d sensitive attributes, setting as Pulumi config secrets...\n", len(sensitiveSecrets))
+			if err := SetSecretsFromState(sensitiveSecrets, secrets.ProjectDir, stackName); err != nil {
+				return fmt.Errorf("setting secrets: %w", err)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "  No sensitive attributes found in state\n")
+		}
+	}
+
 	return nil
 }
 

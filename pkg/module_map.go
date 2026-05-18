@@ -18,7 +18,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -490,6 +492,120 @@ func populateEvaluatedValues(
 
 		iface.Inputs[i].EvaluatedValue = ctyValueToInterface(val)
 	}
+}
+
+// SensitiveSecret represents a sensitive attribute discovered in state,
+// ready to be set as a Pulumi config secret.
+type SensitiveSecret struct {
+	ConfigKey string
+	Value     string
+}
+
+// DiscoverSensitiveSecrets walks the state and collects all sensitive attribute
+// values, returning them as config key / value pairs. The config key is derived
+// by flattening the terraform address and attribute name.
+func DiscoverSensitiveSecrets(state *states.State) []SensitiveSecret {
+	if state == nil {
+		return nil
+	}
+
+	var secrets []SensitiveSecret
+	for _, module := range state.Modules {
+		for _, res := range module.Resources {
+			for instKey, inst := range res.Instances {
+				if inst.Current == nil || len(inst.Current.AttrSensitivePaths) == 0 {
+					continue
+				}
+
+				// Build the full address.
+				address := res.Addr.Resource.String()
+				if instKey != nil {
+					address += instKey.String()
+				}
+				if len(module.Addr) > 0 {
+					address = module.Addr.String() + "." + address
+				}
+
+				// Parse attributes.
+				var attrs map[string]interface{}
+				if inst.Current.AttrsJSON == nil {
+					continue
+				}
+				if err := json.Unmarshal(inst.Current.AttrsJSON, &attrs); err != nil {
+					continue
+				}
+
+				// Collect sensitive top-level attributes.
+				for _, pvm := range inst.Current.AttrSensitivePaths {
+					if len(pvm.Path) != 1 {
+						continue
+					}
+					step, ok := pvm.Path[0].(cty.GetAttrStep)
+					if !ok {
+						continue
+					}
+					value, exists := attrs[step.Name]
+					if !exists || value == nil {
+						continue
+					}
+					configKey := flattenAddress(address, step.Name)
+					secrets = append(secrets, SensitiveSecret{
+						ConfigKey: configKey,
+						Value:     fmt.Sprintf("%v", value),
+					})
+				}
+			}
+		}
+	}
+	return secrets
+}
+
+// flattenAddress converts a terraform address + attribute into a valid Pulumi config key.
+// e.g. "module.rds[\"dmvhm\"].aws_db_instance.main" + "password" → "module_rds_dmvhm_aws_db_instance_main_password"
+func flattenAddress(address, attribute string) string {
+	s := address + "_" + attribute
+	replacer := strings.NewReplacer(
+		".", "_",
+		"[", "_",
+		"]", "",
+		"\"", "",
+		"/", "_",
+		" ", "_",
+	)
+	return replacer.Replace(s)
+}
+
+// SetSecretsFromState runs `pulumi config set --secret` for each sensitive secret.
+func SetSecretsFromState(secrets []SensitiveSecret, projectDir, stack string) error {
+	// Initialize stack if it doesn't exist.
+	fmt.Fprintf(os.Stderr, "Ensuring stack %s exists...\n", stack)
+	initCmd := exec.Command("pulumi", "stack", "init", stack)
+	initCmd.Dir = projectDir
+	initCmd.Stdout = os.Stderr
+	initCmd.Stderr = os.Stderr
+	if err := initCmd.Run(); err != nil {
+		selectCmd := exec.Command("pulumi", "stack", "select", stack)
+		selectCmd.Dir = projectDir
+		selectCmd.Stdout = os.Stderr
+		selectCmd.Stderr = os.Stderr
+		if err := selectCmd.Run(); err != nil {
+			return fmt.Errorf("could not init or select stack %s: %w", stack, err)
+		}
+	}
+
+	for _, s := range secrets {
+		fmt.Fprintf(os.Stderr, "  Setting secret %s\n", s.ConfigKey)
+		setCmd := exec.Command("pulumi", "config", "set", "--secret", s.ConfigKey, s.Value, "-s", stack)
+		setCmd.Dir = projectDir
+		setCmd.Stdout = os.Stderr
+		setCmd.Stderr = os.Stderr
+		if err := setCmd.Run(); err != nil {
+			return fmt.Errorf("setting secret %s: %w", s.ConfigKey, err)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Set %d secrets on stack %s\n", len(secrets), stack)
+	return nil
 }
 
 // redactSensitivePaths replaces sensitive attribute values with "(sensitive)" based on
