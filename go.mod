@@ -252,3 +252,4 @@ require (
 replace github.com/hashicorp/terraform-plugin-sdk/v2 => github.com/pulumi/terraform-plugin-sdk/v2 v2.0.0-20250923233607-7f1981c8674a
 
 replace github.com/hashicorp/hcl/v2 => github.com/opentofu/hcl/v2 v2.20.2-0.20250121132637-504036cd70e7
+replace github.com/pulumi/opentofu => /Users/jdavenport/pulumi-repos/pulumi-opentofu-fork

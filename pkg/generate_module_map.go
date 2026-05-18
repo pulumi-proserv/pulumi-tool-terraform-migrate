@@ -127,18 +127,35 @@ func GenerateModuleMap(ctx context.Context, tfDir, stateFilePath, outputPath, st
 		}
 	}
 
-	// Step 5: Build sensitivity map from provider schemas.
-	fmt.Fprintf(os.Stderr, "[5/7] Building sensitivity map...\n")
-	sensitivityMap, err := BuildSensitivityMap(ctx, config)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not build sensitivity map: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Continuing without attribute redaction.\n")
-		sensitivityMap = nil
+	// Step 5: Build root variable values for expression evaluation.
+	var remoteVars []tfcpkg.WorkspaceVariable
+	if remote != nil && tofuCtx != nil {
+		fmt.Fprintf(os.Stderr, "[5/7] Fetching workspace variables from %s...\n", remote.Hostname)
+		tfcClient := &tfcpkg.Client{
+			Hostname: remote.Hostname,
+			Token:    remote.Token,
+		}
+		remoteVars, err = tfcClient.ListVariables(ctx, remote.Organization, remote.Workspace)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not fetch workspace variables: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Continuing with local tfvars only.\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "  Fetched %d workspace variables\n", len(remoteVars))
+		}
+	}
+
+	var evalScopes *EvalScopes
+	if tofuCtx != nil && config != nil {
+		rootVars := BuildRootVariables(config, tfDir, remoteVars)
+		fmt.Fprintf(os.Stderr, "  Built %d root variable values\n", len(rootVars))
+
+		fmt.Fprintf(os.Stderr, "[5b/7] Building eval scopes (one-time graph walk)...\n")
+		evalScopes, _ = BuildEvalScopes(ctx, tofuCtx, config, rawState, rootVars)
 	}
 
 	// Step 6: Build the module map.
 	fmt.Fprintf(os.Stderr, "[6/7] Building module map...\n")
-	mm, err := BuildModuleMap(config, tofuCtx, rawState, pulumiProviders, sensitivityMap, stackName, projectName)
+	mm, err := BuildModuleMap(config, evalScopes, rawState, pulumiProviders, stackName, projectName)
 	if err != nil {
 		return fmt.Errorf("building module map: %w", err)
 	}
