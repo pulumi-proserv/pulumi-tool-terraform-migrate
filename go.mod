@@ -17,7 +17,7 @@ require (
 	github.com/hexops/autogold/v2 v2.3.0
 	github.com/opentofu/svchost v0.0.0-20250610175836-86c9e5e3d8c8
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/pulumi/opentofu v0.0.0-20260518170651-bde088aab352
+	github.com/pulumi/opentofu v0.0.0-20260520131844-8a7d20a2ff2d
 	github.com/pulumi/pulumi-terraform-bridge/v3 v3.121.0
 	github.com/pulumi/pulumi/sdk/v3 v3.222.0
 	github.com/spf13/cobra v1.10.2
