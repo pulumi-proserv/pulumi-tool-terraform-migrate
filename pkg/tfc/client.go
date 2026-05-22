@@ -39,7 +39,8 @@ type WorkspaceVariable struct {
 	Sensitive bool   `json:"sensitive"`
 }
 
-// ListVariables fetches all Terraform variables from the workspace.
+// ListVariables fetches all Terraform variables from the workspace,
+// following JSON:API pagination via links.next.
 func (c *Client) ListVariables(ctx context.Context, org, workspace string) ([]WorkspaceVariable, error) {
 	httpClient := c.httpClient()
 
@@ -54,42 +55,59 @@ func (c *Client) ListVariables(ctx context.Context, org, workspace string) ([]Wo
 		return nil, err
 	}
 
-	// Fetch all vars in a single request. Scalr's pagination is unreliable
-	// (page[number] parameter is ignored), so we request a large page size.
-	url := fmt.Sprintf("%s/workspaces/%s/vars?page%%5Bsize%%5D=500", apiPrefix, wsID)
-
-	var result struct {
-		Data []struct {
-			Attributes struct {
-				Key       string `json:"key"`
-				Value     string `json:"value"`
-				Category  string `json:"category"`
-				HCL       bool   `json:"hcl"`
-				Sensitive bool   `json:"sensitive"`
-			} `json:"attributes"`
-		} `json:"data"`
-	}
-
-	_, err = c.doJSON(ctx, httpClient, url, &result)
-	if err != nil {
-		return nil, fmt.Errorf("listing workspace variables: %w", err)
-	}
-
 	var allVars []WorkspaceVariable
-	for _, d := range result.Data {
-		if d.Attributes.Category != "terraform" {
-			continue
+	baseVarsURL := fmt.Sprintf("%s/workspaces/%s/vars", apiPrefix, wsID)
+
+	for pageNum := 1; ; pageNum++ {
+		url := fmt.Sprintf("%s?page%%5Bnumber%%5D=%d&page%%5Bsize%%5D=100", baseVarsURL, pageNum)
+
+		var page varsPage
+		_, err = c.doJSON(ctx, httpClient, url, &page)
+		if err != nil {
+			return nil, fmt.Errorf("listing workspace variables: %w", err)
 		}
-		allVars = append(allVars, WorkspaceVariable{
-			Key:       d.Attributes.Key,
-			Value:     d.Attributes.Value,
-			Category:  d.Attributes.Category,
-			HCL:       d.Attributes.HCL,
-			Sensitive: d.Attributes.Sensitive,
-		})
+
+		for _, d := range page.Data {
+			if d.Attributes.Category != "terraform" {
+				continue
+			}
+			allVars = append(allVars, WorkspaceVariable{
+				Key:       d.Attributes.Key,
+				Value:     d.Attributes.Value,
+				Category:  d.Attributes.Category,
+				HCL:       d.Attributes.HCL,
+				Sensitive: d.Attributes.Sensitive,
+			})
+		}
+
+		// Stop when we've reached the last page.
+		if page.Meta.Pagination.NextPage == nil || pageNum >= page.Meta.Pagination.TotalPages {
+			break
+		}
 	}
 
 	return allVars, nil
+}
+
+// varsPage represents one page of the JSON:API list-variables response.
+type varsPage struct {
+	Data []struct {
+		Attributes struct {
+			Key       string `json:"key"`
+			Value     string `json:"value"`
+			Category  string `json:"category"`
+			HCL       bool   `json:"hcl"`
+			Sensitive bool   `json:"sensitive"`
+		} `json:"attributes"`
+	} `json:"data"`
+	Meta struct {
+		Pagination struct {
+			CurrentPage int  `json:"current-page"`
+			NextPage    *int `json:"next-page"`
+			TotalPages  int  `json:"total-pages"`
+			TotalCount  int  `json:"total-count"`
+		} `json:"pagination"`
+	} `json:"meta"`
 }
 
 func (c *Client) httpClient() *http.Client {

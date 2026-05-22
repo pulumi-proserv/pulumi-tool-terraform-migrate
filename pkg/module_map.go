@@ -597,12 +597,18 @@ func SetSecretsFromState(secrets []SensitiveSecret, projectDir, projectName, sta
 	return nil
 }
 
-// writeConfigSecrets creates a local workspace and writes secret config values.
+// writeConfigSecrets creates a local workspace, ensures the stack exists, and writes secret config values.
 func writeConfigSecrets(projectDir, stack string, configMap auto.ConfigMap) error {
 	ctx := context.Background()
 	ws, err := auto.NewLocalWorkspace(ctx, auto.WorkDir(projectDir))
 	if err != nil {
 		return fmt.Errorf("creating workspace: %w", err)
+	}
+
+	// Create the stack if it doesn't already exist.
+	fmt.Fprintf(os.Stderr, "Ensuring stack %s exists...\n", stack)
+	if err := ws.CreateStack(ctx, stack); err != nil && !auto.IsCreateStack409Error(err) {
+		return fmt.Errorf("creating stack %s: %w", stack, err)
 	}
 
 	if err := ws.SetAllConfig(ctx, stack, configMap); err != nil {
