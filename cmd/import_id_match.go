@@ -25,7 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func newModuleMapCmd() *cobra.Command {
+func newImportIDMatchCmd() *cobra.Command {
 	var digestPath string
 	var importFilePath string
 	var mapFlags []string
@@ -33,8 +33,8 @@ func newModuleMapCmd() *cobra.Command {
 	var outPath string
 
 	cmd := &cobra.Command{
-		Use:   "module-map",
-		Short: "Fill Pulumi import file IDs using a TF digest and module-to-component mappings",
+		Use:   "import-id-match",
+		Short: "Fill Pulumi import file IDs by matching TF digest resources to Pulumi components",
 		Long: `Match Terraform resources from a tf-digest.json to Pulumi import file
 entries and fill in placeholder import IDs.
 
@@ -43,13 +43,13 @@ The command takes:
   - A Pulumi import file (from "pulumi preview --import-file") with placeholder IDs
   - Mappings from TF module paths to Pulumi component instance names
 
-It matches resources by type within each mapped module/component pair and
-writes a filled import file.
+It matches resources by type + name within each mapped module/component pair
+and writes a filled import file.
 
 Examples:
 
   # Basic usage with CLI map flags
-  pulumi-terraform-migrate module-map \
+  pulumi-terraform-migrate import-id-match \
     --digest tf-digest.json \
     --import-file import.json \
     --map 'module.caas_rds=caas_rds' \
@@ -57,7 +57,7 @@ Examples:
     --out filled-import.json
 
   # Using a mapping file
-  pulumi-terraform-migrate module-map \
+  pulumi-terraform-migrate import-id-match \
     --digest tf-digest.json \
     --import-file import.json \
     --mapping-file mappings.yaml \
@@ -150,5 +150,5 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(newModuleMapCmd())
+	rootCmd.AddCommand(newImportIDMatchCmd())
 }

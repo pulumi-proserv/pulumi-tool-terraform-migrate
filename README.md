@@ -63,7 +63,7 @@ helps is to fix discrepancies between code and state and get accurate results.
 
 ## Migration workflow
 
-The `tf-digest` and `module-map` commands work together to automate Pulumi
+The `tf-digest` and `import-id-match` commands work together to automate Pulumi
 resource imports from Terraform state. The end-to-end flow looks like this:
 
 ```
@@ -82,7 +82,7 @@ resource imports from Terraform state. The end-to-end flow looks like this:
           │                         │                             │
           ▼                         ▼                             ▼
   ┌───────────────┐     ┌───────────────────────┐     ┌───────────────────────┐
-  │ tf-digest.json│────▶│     module-map         │◀───│  --map / --mapping-   │
+  │ tf-digest.json│────▶│   import-id-match      │◀───│  --map / --mapping-   │
   │               │     │                       │     │  file                 │
   └───────────────┘     └───────────┬───────────┘     └───────────────────────┘
                                     │
@@ -118,7 +118,7 @@ pulumi plugin run terraform-migrate -- tf-digest \
 pulumi preview --import-file import.json
 
 # 3. Fill import IDs by matching TF resources → Pulumi components
-pulumi plugin run terraform-migrate -- module-map \
+pulumi plugin run terraform-migrate -- import-id-match \
   --digest tf-digest.json \
   --import-file import.json \
   --map 'module.caas_rds=caas_rds' \
@@ -234,7 +234,7 @@ opt out. Config keys are derived from the terraform address
 
 ---
 
-## `module-map` command
+## `import-id-match` command
 
 Fills a Pulumi import file's `<PLACEHOLDER>` IDs by matching resources from a TF digest
 to Pulumi component children. This bridges the naming gap between Terraform's flat
@@ -242,24 +242,22 @@ resource addresses and Pulumi's component-based naming.
 
 ### Why is this needed?
 
-The `tf-digest` produces Pulumi URNs based on flattened TF addresses
-(e.g. `caas_rds_aurora_cluster`), but a real Pulumi program with
-`ComponentResource` classes uses its own names (e.g. `caas_rds`→`cluster`).
-When `pulumi preview --import-file` generates a skeleton, the IDs are all
-`<PLACEHOLDER>` because the names don't match the digest.
+When `pulumi preview --import-file` generates a skeleton import file, all IDs
+are `<PLACEHOLDER>`. The TF digest knows the real import IDs (from state), but
+the resource names differ between TF and Pulumi.
 
-The `module-map` command solves this by:
+The `import-id-match` command solves this by:
 
 1. Grouping import entries by their `parent` field (component children)
 2. Grouping TF resources by their module path (from the digest)
 3. Using explicit mappings to pair TF modules with Pulumi components
-4. Matching children within each pair **by resource type**
-5. Disambiguating multiple matches by name token overlap
+4. Matching children within each pair **by type + resource name**
+5. Falling back to type-only matching when there's a single candidate
 
 ### Usage
 
 ```
-pulumi-tool-terraform-migrate module-map \
+pulumi-tool-terraform-migrate import-id-match \
   --digest tf-digest.json \
   --import-file import.json \
   --map 'module.caas_rds=caas_rds' \
@@ -304,7 +302,21 @@ mappings:
 
 Root-level resources (no module / no parent) are matched automatically without mappings.
 
-### `module-map` matching algorithm
+### Matching algorithm
+
+The matching is deterministic when Pulumi components use TF resource names
+as logical name suffixes (the convention enforced by the component generation
+skill):
+
+```
+TF digest:   module.caas_rds.aws_rds_cluster.aurora_cluster
+                                              ^^^^^^^^^^^^^^ extractResourceName → "aurora_cluster"
+
+Import file: name: "caas_rds-aurora_cluster", parent: "caas_rds"
+                            ^^^^^^^^^^^^^^ extractImportSuffix → "aurora_cluster"
+
+Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
+```
 
 ```
  ┌────────────────────────┐          ┌──────────────────────────┐
@@ -313,52 +325,49 @@ Root-level resources (no module / no parent) are matched automatically without m
  │  modules:              │          │  resources:              │
  │    module.caas_rds:    │          │    - type: Component     │
  │      - aws_rds_cluster │          │      name: caas_rds      │
- │        id: cluster-123 │          │      component: true     │
- │      - aws_rds_instance│          │                          │
- │        id: inst-456    │          │    - type: aws:rds/...   │
- │                        │          │      name: cluster       │
- │  rootResources:        │          │      id: <PLACEHOLDER>   │
- │    - aws_s3_bucket     │          │      parent: caas_rds    │
- │      id: my-bucket     │          │                          │
- └───────────┬────────────┘          │    - type: aws:rds/...   │
-             │                       │      name: instance      │
-             │    ┌──────────────┐   │      id: <PLACEHOLDER>   │
-             │    │   mappings   │   │      parent: caas_rds    │
-             │    │              │   │                          │
-             │    │ module.      │   │    - type: aws:s3/...    │
-             │    │ caas_rds     │   │      name: my-bucket     │
-             │    │  = caas_rds  │   │      id: <PLACEHOLDER>   │
-             │    └──────┬───────┘   └──────────┬───────────────┘
-             │           │                      │
-             ▼           ▼                      ▼
+ │        .aurora_cluster │          │      component: true     │
+ │        id: cluster-123 │          │                          │
+ │      - aws_rds_cluster_│          │    - type: aws:rds/...   │
+ │        instance.inst   │          │      name: caas_rds-     │
+ │        id: inst-456    │          │        aurora_cluster    │
+ │                        │          │      id: <PLACEHOLDER>   │
+ │  rootResources:        │          │      parent: caas_rds    │
+ │    - aws_s3_bucket     │          │                          │
+ │      .my_bucket        │          │    - type: aws:rds/...   │
+ │      id: my-bucket     │          │      name: caas_rds-inst │
+ └───────────┬────────────┘          │      id: <PLACEHOLDER>   │
+             │                       │      parent: caas_rds    │
+             │    ┌──────────────┐   │                          │
+             │    │   mappings   │   │    - type: aws:s3/...    │
+             │    │              │   │      name: my_bucket     │
+             │    │ module.      │   │      id: <PLACEHOLDER>   │
+             │    │ caas_rds     │   └──────────┬───────────────┘
+             │    │  = caas_rds  │               │
+             │    └──────┬───────┘               │
+             │           │                       │
+             ▼           ▼                       ▼
      ┌───────────────────────────────────────────────────┐
-     │              module-map command                   │
+     │           import-id-match command                 │
      │                                                   │
      │  1. Group import entries by parent                │
-     │     caas_rds → [cluster, instance]                │
-     │     (orphans) → [my-bucket]                       │
+     │     caas_rds → [aurora_cluster, inst]             │
+     │     (orphans) → [my_bucket]                       │
      │                                                   │
      │  2. Group TF resources by module path             │
-     │     module.caas_rds → [rds_cluster, rds_instance] │
-     │     root → [s3_bucket]                            │
+     │     module.caas_rds → [aurora_cluster, inst]      │
+     │     root → [my_bucket]                            │
      │                                                   │
-     │  3. Pair via mappings:                            │
-     │     module.caas_rds ↔ caas_rds                    │
-     │                                                   │
-     │  4. Match children by Pulumi type:                │
-     │     aws:rds/cluster:Cluster → cluster-123         │
-     │     aws:rds/clusterInstance:... → inst-456        │
-     │                                                   │
-     │  5. Root resources matched automatically:         │
-     │     aws:s3/bucket:Bucket → my-bucket              │
+     │  3. Pair via mappings                             │
+     │  4. Match by type + name (deterministic)          │
+     │  5. Root resources matched automatically          │
      └──────────────────────┬────────────────────────────┘
                             │
                             ▼
-              ┌─────────────────────────┐
-              │   filled-import.json    │
-              │                         │
-              │   cluster: cluster-123  │
-              │   instance: inst-456    │
-              │   my-bucket: my-bucket  │
-              └─────────────────────────┘
+              ┌──────────────────────────────┐
+              │   filled-import.json         │
+              │                              │
+              │   aurora_cluster: cluster-123 │
+              │   inst: inst-456             │
+              │   my_bucket: my-bucket       │
+              └──────────────────────────────┘
 ```
