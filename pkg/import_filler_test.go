@@ -1,0 +1,414 @@
+// Copyright 2016-2025, Pulumi Corporation.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package pkg
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestFillImportFile_SingleMatch(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"vpc": {
+				TerraformPath: "module.vpc",
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:ec2/vpc:Vpc::vpc-main",
+						TerraformAddress: "module.vpc.aws_vpc.main",
+						ImportID:         "vpc-12345",
+					},
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:ec2/subnet:Subnet::vpc-public_0",
+						TerraformAddress: "module.vpc.aws_subnet.public[0]",
+						ImportID:         "subnet-aaa",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			// Names follow ${parent}-${tfResourceName} convention
+			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "<PLACEHOLDER>", Parent: "vpc"},
+			{Type: "aws:ec2/subnet:Subnet", Name: "vpc-public_0", ID: "<PLACEHOLDER>", Parent: "vpc"},
+		},
+	}
+
+	mappings := map[string]string{
+		"module.vpc": "vpc",
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 2, result.Filled)
+	assert.Equal(t, 1, result.Skipped)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Empty(t, result.Warnings)
+
+	assert.Equal(t, "vpc-12345", importFile.Resources[1].ID)
+	assert.Equal(t, "subnet-aaa", importFile.Resources[2].ID)
+}
+
+func TestFillImportFile_NameMatchMultipleSameType(t *testing.T) {
+	t.Parallel()
+
+	// Two resources of the same type — matched by name, not disambiguation.
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"rds": {
+				TerraformPath: "module.rds",
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::rds-primary",
+						TerraformAddress: "module.rds.aws_rds_cluster.primary",
+						ImportID:         "cluster-primary",
+					},
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::rds-replica",
+						TerraformAddress: "module.rds.aws_rds_cluster.replica",
+						ImportID:         "cluster-replica",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:data:RdsCluster", Name: "rds", Component: true},
+			{Type: "aws:rds/cluster:Cluster", Name: "rds-primary", ID: "<PLACEHOLDER>", Parent: "rds"},
+			{Type: "aws:rds/cluster:Cluster", Name: "rds-replica", ID: "<PLACEHOLDER>", Parent: "rds"},
+		},
+	}
+
+	mappings := map[string]string{
+		"module.rds": "rds",
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 2, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Empty(t, result.Warnings)
+	assert.Equal(t, "cluster-primary", importFile.Resources[1].ID)
+	assert.Equal(t, "cluster-replica", importFile.Resources[2].ID)
+}
+
+func TestFillImportFile_TypeOnlyFallback(t *testing.T) {
+	t.Parallel()
+
+	// Names don't match convention but there's only one of each type → fallback works.
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"vpc": {
+				TerraformPath: "module.vpc",
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:ec2/vpc:Vpc::vpc-main",
+						TerraformAddress: "module.vpc.aws_vpc.main",
+						ImportID:         "vpc-12345",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			// Name doesn't follow convention (legacy component)
+			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-my-custom-name", ID: "<PLACEHOLDER>", Parent: "vpc"},
+		},
+	}
+
+	mappings := map[string]string{
+		"module.vpc": "vpc",
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 1, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "vpc-12345", importFile.Resources[1].ID)
+}
+
+func TestFillImportFile_RootResources(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{},
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucket:Bucket::my_bucket",
+				TerraformAddress: "aws_s3_bucket.my_bucket",
+				ImportID:         "my-bucket-id",
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "aws:s3/bucket:Bucket", Name: "my_bucket", ID: "<PLACEHOLDER>"},
+		},
+	}
+
+	result := FillImportFile(digest, importFile, map[string]string{})
+
+	assert.Equal(t, 1, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "my-bucket-id", importFile.Resources[0].ID)
+}
+
+func TestFillImportFile_MissingModule(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:data:Rds", Name: "rds", Component: true},
+			{Type: "aws:rds/cluster:Cluster", Name: "rds-aurora_cluster", ID: "<PLACEHOLDER>", Parent: "rds"},
+		},
+	}
+
+	mappings := map[string]string{
+		"module.rds": "rds",
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 0, result.Filled)
+	assert.Equal(t, 1, result.Unmatched)
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0], "not found in digest")
+}
+
+func TestFillImportFile_DataSourcesSkipped(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"vpc": {
+				TerraformPath: "module.vpc",
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:ec2/vpc:Vpc::vpc-main",
+						TerraformAddress: "module.vpc.aws_vpc.main",
+						ImportID:         "vpc-123",
+					},
+					{
+						Mode:             "data",
+						TranslatedURN:    "",
+						TerraformAddress: "module.vpc.data.aws_availability_zones.available",
+						ImportID:         "",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "<PLACEHOLDER>", Parent: "vpc"},
+		},
+	}
+
+	mappings := map[string]string{
+		"module.vpc": "vpc",
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 1, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "vpc-123", importFile.Resources[1].ID)
+}
+
+func TestFillImportFile_PrefilledIDsUntouched(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"vpc": {
+				TerraformPath: "module.vpc",
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:ec2/vpc:Vpc::vpc-main",
+						TerraformAddress: "module.vpc.aws_vpc.main",
+						ImportID:         "vpc-999",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "vpc-already-set", Parent: "vpc"},
+		},
+	}
+
+	mappings := map[string]string{
+		"module.vpc": "vpc",
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 0, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "vpc-already-set", importFile.Resources[1].ID)
+}
+
+func TestFillImportFile_ForEachMapping(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			`capture_ui["dmvhm"]`: {
+				TerraformPath: `module.capture_ui["dmvhm"]`,
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    `urn:pulumi:dev::proj::aws:s3/bucket:Bucket::capture_ui["dmvhm"]-ui`,
+						TerraformAddress: `module.capture_ui["dmvhm"].aws_s3_bucket.ui`,
+						ImportID:         "dmvhm-ui-bucket",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "veridos:compute:CaptureUi", Name: `capture_ui["dmvhm"]`, Component: true},
+			// Name follows convention: ${parent}-${tfResourceName}
+			{Type: "aws:s3/bucket:Bucket", Name: `capture_ui["dmvhm"]-ui`, ID: "<PLACEHOLDER>", Parent: `capture_ui["dmvhm"]`},
+		},
+	}
+
+	mappings := map[string]string{
+		`module.capture_ui["dmvhm"]`: `capture_ui["dmvhm"]`,
+	}
+
+	result := FillImportFile(digest, importFile, mappings)
+
+	assert.Equal(t, 1, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "dmvhm-ui-bucket", importFile.Resources[1].ID)
+}
+
+func TestExtractTypeFromURN(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		urn      string
+		expected string
+	}{
+		{"urn:pulumi:dev::proj::aws:ec2/vpc:Vpc::main", "aws:ec2/vpc:Vpc"},
+		{"urn:pulumi:stack::project::aws:rds/cluster:Cluster::name", "aws:rds/cluster:Cluster"},
+		{"module.vpc.aws_vpc.main", ""},
+		{"", ""},
+		{"urn:pulumi:stack::project", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.urn, func(t *testing.T) {
+			assert.Equal(t, tt.expected, extractTypeFromURN(tt.urn))
+		})
+	}
+}
+
+func TestExtractResourceName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		address  string
+		expected string
+	}{
+		{"module.vpc.aws_vpc.main", "main"},
+		{"module.vpc.aws_subnet.public[0]", "public_0"},
+		{`module.vpc.aws_ssm_parameter.params["my_key"]`, "params_my_key"},
+		{"aws_s3_bucket.my_bucket", "my_bucket"},
+		{`module.capture_ui["dmvhm"].aws_s3_bucket.ui`, "ui"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.address, func(t *testing.T) {
+			assert.Equal(t, tt.expected, extractResourceName(tt.address))
+		})
+	}
+}
+
+func TestExtractImportSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		parent   string
+		expected string
+	}{
+		{"vpc-main", "vpc", "main"},
+		{"rds-aurora_cluster", "rds", "aurora_cluster"},
+		{`capture_ui["dmvhm"]-ui`, `capture_ui["dmvhm"]`, "ui"},
+		{"my_bucket", "", "my_bucket"},
+		// Name doesn't have parent prefix — return as-is
+		{"unrelated-name", "vpc", "unrelated-name"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, extractImportSuffix(tt.name, tt.parent))
+		})
+	}
+}
+
+func TestNormalizeInstanceKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"main", "main"},
+		{"public[0]", "public_0"},
+		{`params["my_key"]`, "params_my_key"},
+		{"instances[1]", "instances_1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.expected, normalizeInstanceKey(tt.input))
+		})
+	}
+}
