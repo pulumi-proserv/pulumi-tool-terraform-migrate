@@ -44,10 +44,53 @@ type FillResult struct {
 
 // FillImportFile matches TF resources from a digest to Pulumi import file entries
 // and fills in placeholder import IDs. It modifies importFile in place.
-func FillImportFile(digest *ModuleMap, importFile *ImportFile, mappings map[string]string) *FillResult {
+//
+// moduleMappings maps TF module paths to Pulumi component names (e.g., "module.caas_rds" → "caas_rds").
+// resourceMappings maps TF resource addresses to Pulumi resource names (e.g., "aws_s3_bucket.my_bucket" → "my_bucket").
+func FillImportFile(digest *ModuleMap, importFile *ImportFile, moduleMappings, resourceMappings map[string]string) *FillResult {
 	result := &FillResult{}
 
-	// Group import entries by parent.
+	// Build a lookup of all TF resources by address for resource-level mappings.
+	tfByAddress := map[string]*ModuleResource{}
+	for i := range digest.RootResources {
+		r := &digest.RootResources[i]
+		if r.Mode == "managed" {
+			tfByAddress[r.TerraformAddress] = r
+		}
+	}
+	collectAllResources(digest.Modules, tfByAddress)
+
+	// Build a lookup of import entries by name for resource-level mappings.
+	importByName := map[string]*ImportEntry{}
+	for i := range importFile.Resources {
+		entry := &importFile.Resources[i]
+		if !entry.Component {
+			importByName[entry.Name] = entry
+		}
+	}
+
+	// Phase 1: Apply resource-level mappings (direct TF address → Pulumi name).
+	for tfAddr, pulumiName := range resourceMappings {
+		tfRes, tfOk := tfByAddress[tfAddr]
+		entry, importOk := importByName[pulumiName]
+		if !tfOk {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("TF resource %q from resource mapping not found in digest", tfAddr))
+			continue
+		}
+		if !importOk {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Pulumi resource %q from resource mapping not found in import file", pulumiName))
+			continue
+		}
+		if entry.ID != "<PLACEHOLDER>" {
+			continue // already filled
+		}
+		entry.ID = tfRes.ImportID
+		result.Filled++
+	}
+
+	// Phase 2: Group remaining import entries by parent for module-level matching.
 	byParent := map[string][]*ImportEntry{}    // parentName -> children
 	var orphans []*ImportEntry                  // entries with no parent
 	componentNames := map[string]bool{}         // track component entries
@@ -58,6 +101,9 @@ func FillImportFile(digest *ModuleMap, importFile *ImportFile, mappings map[stri
 			componentNames[entry.Name] = true
 			result.Skipped++
 			continue
+		}
+		if entry.ID != "<PLACEHOLDER>" {
+			continue // already filled by resource mapping
 		}
 		if entry.Parent != "" {
 			byParent[entry.Parent] = append(byParent[entry.Parent], entry)
@@ -70,8 +116,8 @@ func FillImportFile(digest *ModuleMap, importFile *ImportFile, mappings map[stri
 	tfByModule := map[string][]ModuleResource{}
 	collectModuleResources(digest.Modules, tfByModule)
 
-	// Match components to modules using mappings.
-	for tfModulePath, componentName := range mappings {
+	// Match components to modules using module mappings.
+	for tfModulePath, componentName := range moduleMappings {
 		tfResources, tfOk := tfByModule[tfModulePath]
 		importEntries, importOk := byParent[componentName]
 
@@ -110,6 +156,21 @@ func FillImportFile(digest *ModuleMap, importFile *ImportFile, mappings map[stri
 	}
 
 	return result
+}
+
+// collectAllResources walks the nested module map and indexes all managed resources by TF address.
+func collectAllResources(modules map[string]*ModuleMapEntry, out map[string]*ModuleResource) {
+	for _, entry := range modules {
+		for i := range entry.Resources {
+			r := &entry.Resources[i]
+			if r.Mode == "managed" {
+				out[r.TerraformAddress] = r
+			}
+		}
+		if entry.Modules != nil {
+			collectAllResources(entry.Modules, out)
+		}
+	}
 }
 
 // collectModuleResources walks the nested module map and flattens resources by their TF path.
@@ -228,10 +289,9 @@ func extractResourceName(address string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	// The resource name is the last part.
-	last := parts[len(parts)-1]
-	// Normalize instance keys: replace ["key"] and [0] with _key and _0.
-	return normalizeInstanceKey(last)
+	// The resource name is the last part (e.g., ssm_parameters["/develop/dmvhm/cm/api_stage"]).
+	// Kept as-is to match Pulumi resource name suffixes directly.
+	return parts[len(parts)-1]
 }
 
 // extractImportSuffix extracts the resource name suffix from a Pulumi import

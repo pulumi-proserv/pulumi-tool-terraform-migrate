@@ -51,7 +51,7 @@ func TestFillImportFile_SingleMatch(t *testing.T) {
 			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
 			// Names follow ${parent}-${tfResourceName} convention
 			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "<PLACEHOLDER>", Parent: "vpc"},
-			{Type: "aws:ec2/subnet:Subnet", Name: "vpc-public_0", ID: "<PLACEHOLDER>", Parent: "vpc"},
+			{Type: "aws:ec2/subnet:Subnet", Name: `vpc-public[0]`, ID: "<PLACEHOLDER>", Parent: "vpc"},
 		},
 	}
 
@@ -59,7 +59,7 @@ func TestFillImportFile_SingleMatch(t *testing.T) {
 		"module.vpc": "vpc",
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 2, result.Filled)
 	assert.Equal(t, 1, result.Skipped)
@@ -108,7 +108,7 @@ func TestFillImportFile_NameMatchMultipleSameType(t *testing.T) {
 		"module.rds": "rds",
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 2, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
@@ -149,7 +149,7 @@ func TestFillImportFile_TypeOnlyFallback(t *testing.T) {
 		"module.vpc": "vpc",
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 1, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
@@ -177,7 +177,7 @@ func TestFillImportFile_RootResources(t *testing.T) {
 		},
 	}
 
-	result := FillImportFile(digest, importFile, map[string]string{})
+	result := FillImportFile(digest, importFile, nil, nil)
 
 	assert.Equal(t, 1, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
@@ -202,7 +202,7 @@ func TestFillImportFile_MissingModule(t *testing.T) {
 		"module.rds": "rds",
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 0, result.Filled)
 	assert.Equal(t, 1, result.Unmatched)
@@ -246,7 +246,7 @@ func TestFillImportFile_DataSourcesSkipped(t *testing.T) {
 		"module.vpc": "vpc",
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 1, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
@@ -283,7 +283,7 @@ func TestFillImportFile_PrefilledIDsUntouched(t *testing.T) {
 		"module.vpc": "vpc",
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 0, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
@@ -321,11 +321,91 @@ func TestFillImportFile_ForEachMapping(t *testing.T) {
 		`module.capture_ui["dmvhm"]`: `capture_ui["dmvhm"]`,
 	}
 
-	result := FillImportFile(digest, importFile, mappings)
+	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 1, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
 	assert.Equal(t, "dmvhm-ui-bucket", importFile.Resources[1].ID)
+}
+
+func TestFillImportFile_ResourceMappings(t *testing.T) {
+	t.Parallel()
+
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{},
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucketV2:BucketV2::cm_cfn",
+				TerraformAddress: `aws_s3_bucket.cm_cfn["my-service-develop"]`,
+				ImportID:         "my-service-develop-bucket",
+			},
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucketV2:BucketV2::other_bucket",
+				TerraformAddress: "aws_s3_bucket.other_bucket",
+				ImportID:         "other-bucket-id",
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			// Root resource with a name that doesn't match TF convention
+			{Type: "aws:s3/bucketV2:BucketV2", Name: `cm_cfn["my-service-develop"]`, ID: "<PLACEHOLDER>"},
+			// Root resource that matches by name (handled by root matching)
+			{Type: "aws:s3/bucketV2:BucketV2", Name: "other_bucket", ID: "<PLACEHOLDER>"},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		`aws_s3_bucket.cm_cfn["my-service-develop"]`: `cm_cfn["my-service-develop"]`,
+	}
+
+	result := FillImportFile(digest, importFile, nil, resourceMappings)
+
+	assert.Equal(t, 2, result.Filled) // 1 from resource mapping + 1 from root matching
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "my-service-develop-bucket", importFile.Resources[0].ID)
+	assert.Equal(t, "other-bucket-id", importFile.Resources[1].ID)
+}
+
+func TestFillImportFile_ResourceMappingsFromModule(t *testing.T) {
+	t.Parallel()
+
+	// Resource-level mapping can also target resources inside TF modules.
+	digest := &ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"rds": {
+				TerraformPath: "module.rds",
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/clusterInstance:ClusterInstance::rds-instance-0",
+						TerraformAddress: `module.rds.aws_rds_cluster_instance.instance["writer"]`,
+						ImportID:         "rds-writer-instance",
+					},
+				},
+			},
+		},
+	}
+
+	importFile := &ImportFile{
+		Resources: []ImportEntry{
+			{Type: "my:component:Rds", Name: "rds", Component: true},
+			{Type: "aws:rds/clusterInstance:ClusterInstance", Name: "rds-instance-0", ID: "<PLACEHOLDER>", Parent: "rds"},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		`module.rds.aws_rds_cluster_instance.instance["writer"]`: "rds-instance-0",
+	}
+
+	result := FillImportFile(digest, importFile, nil, resourceMappings)
+
+	assert.Equal(t, 1, result.Filled)
+	assert.Equal(t, 0, result.Unmatched)
+	assert.Equal(t, "rds-writer-instance", importFile.Resources[1].ID)
 }
 
 func TestExtractTypeFromURN(t *testing.T) {
@@ -357,8 +437,8 @@ func TestExtractResourceName(t *testing.T) {
 		expected string
 	}{
 		{"module.vpc.aws_vpc.main", "main"},
-		{"module.vpc.aws_subnet.public[0]", "public_0"},
-		{`module.vpc.aws_ssm_parameter.params["my_key"]`, "params_my_key"},
+		{"module.vpc.aws_subnet.public[0]", "public[0]"},
+		{`module.vpc.aws_ssm_parameter.params["my_key"]`, `params["my_key"]`},
 		{"aws_s3_bucket.my_bucket", "my_bucket"},
 		{`module.capture_ui["dmvhm"].aws_s3_bucket.ui`, "ui"},
 	}

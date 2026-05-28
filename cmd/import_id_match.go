@@ -42,9 +42,11 @@ The command takes:
   - A TF digest (from "tf-digest" command) containing TF modules and resources
   - A Pulumi import file (from "pulumi preview --import-file") with placeholder IDs
   - Mappings from TF module paths to Pulumi component instance names
+  - Optional resource-level mappings from TF addresses to Pulumi resource names
 
 It matches resources by type + name within each mapped module/component pair
-and writes a filled import file.
+and writes a filled import file. Resource-level mappings are applied first for
+individual resources that don't follow the naming convention.
 
 Examples:
 
@@ -56,12 +58,18 @@ Examples:
     --map 'module.capture_ui["dmvhm"]=capture_ui["dmvhm"]' \
     --out filled-import.json
 
-  # Using a mapping file
+  # Using a mapping file (supports both module and resource mappings)
   pulumi-terraform-migrate import-id-match \
     --digest tf-digest.json \
     --import-file import.json \
     --mapping-file mappings.yaml \
     --out filled-import.json
+
+  # Mapping file format:
+  #   modules:
+  #     "module.caas_rds": "caas_rds"
+  #   resources:
+  #     "aws_s3_bucket.my_bucket": "my_bucket"
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load TF digest.
@@ -85,7 +93,8 @@ Examples:
 			}
 
 			// Build mappings: start from file, then override with CLI flags.
-			mappings := make(map[string]string)
+			moduleMappings := make(map[string]string)
+			resourceMappings := make(map[string]string)
 
 			if mappingFile != "" {
 				mfData, err := os.ReadFile(mappingFile)
@@ -93,13 +102,22 @@ Examples:
 					return fmt.Errorf("reading mapping file: %w", err)
 				}
 				var mf struct {
-					Mappings map[string]string `yaml:"mappings"`
+					Modules   map[string]string `yaml:"modules"`
+					Mappings  map[string]string `yaml:"mappings"`  // deprecated alias for modules
+					Resources map[string]string `yaml:"resources"`
 				}
 				if err := yaml.Unmarshal(mfData, &mf); err != nil {
 					return fmt.Errorf("parsing mapping file: %w", err)
 				}
+				// "mappings" is the deprecated key; "modules" takes precedence.
 				for k, v := range mf.Mappings {
-					mappings[k] = v
+					moduleMappings[k] = v
+				}
+				for k, v := range mf.Modules {
+					moduleMappings[k] = v
+				}
+				for k, v := range mf.Resources {
+					resourceMappings[k] = v
 				}
 			}
 
@@ -108,11 +126,11 @@ Examples:
 				if len(parts) != 2 {
 					return fmt.Errorf("invalid --map flag %q: expected format 'module.X=componentName'", m)
 				}
-				mappings[parts[0]] = parts[1]
+				moduleMappings[parts[0]] = parts[1]
 			}
 
 			// Run the fill logic.
-			result := pkg.FillImportFile(&digest, &importFile, mappings)
+			result := pkg.FillImportFile(&digest, &importFile, moduleMappings, resourceMappings)
 
 			// Write output.
 			outData, err := json.MarshalIndent(&importFile, "", "    ")
