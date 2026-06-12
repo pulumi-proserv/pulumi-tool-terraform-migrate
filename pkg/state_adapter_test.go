@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tofu"
-	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/stretchr/testify/require"
 )
@@ -104,8 +103,11 @@ func TestConvertWithSensitiveValues(t *testing.T) {
 
 	password := data.Export.Deployment.Resources[2]
 	require.Equal(t, tokens.Type("random:index/randomPassword:RandomPassword"), password.Type)
-	_, ok := password.Outputs["result"].(*resource.Secret)
-	require.True(t, ok)
+	// Sensitive values are serialized with the Pulumi secret sentinel format
+	resultMap, ok := password.Outputs["result"].(map[string]interface{})
+	require.True(t, ok, "result should be a map (secret sentinel)")
+	require.Equal(t, "1b47061264138c4ac30d75fd1eb44270", resultMap["4dabf18193072939515e22adb298388d"])
+	require.Contains(t, resultMap, "plaintext")
 }
 
 func translateStateFromJson(ctx context.Context, tfStateJson string) (*TranslateStateResult, error) {
