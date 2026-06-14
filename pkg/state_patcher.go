@@ -384,13 +384,24 @@ func PatchState(
 				digVal = digResource.Attributes[tfAttr]
 			}
 
+			// Treat empty string the same as nil — TF stores "" for unset
+			// string fields, but the bridge applies the schema default.
+			inputVal := inputsRaw[pulumiField]
+			inputEmpty := inputVal == nil || inputVal == ""
+			outputVal := outputsRaw[pulumiField]
+			outputEmpty := outputVal == nil || outputVal == ""
+
+			// Also treat empty-string digest values as unset.
+			digEmpty := digVal == nil || digVal == "" || digVal == "(sensitive)"
+			digSensitive := digVal == "(sensitive)"
+
 			// Patch inputs.
-			if inputsRaw[pulumiField] == nil {
-				if digVal != nil && digVal != "(sensitive)" {
+			if inputEmpty {
+				if !digEmpty {
 					inputsRaw[pulumiField] = digVal
 					result.FieldsFromDigest++
 					patched = true
-				} else if digVal == "(sensitive)" {
+				} else if digSensitive {
 					result.SkippedSensitive++
 				} else if defaultVal != nil {
 					inputsRaw[pulumiField] = defaultVal
@@ -400,8 +411,8 @@ func PatchState(
 			}
 
 			// Patch outputs.
-			if outputsRaw[pulumiField] == nil {
-				if digVal != nil && digVal != "(sensitive)" {
+			if outputEmpty {
+				if !digEmpty {
 					outputsRaw[pulumiField] = digVal
 				} else if defaultVal != nil {
 					outputsRaw[pulumiField] = defaultVal
