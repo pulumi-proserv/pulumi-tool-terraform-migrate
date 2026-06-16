@@ -111,7 +111,7 @@ func TestPatchState_PatchesFromDigest(t *testing.T) {
 		"aws_secretsmanager_secret.my_secret": "my-secret",
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings)
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 1, result.FieldsFromDigest) // recovery_window_in_days=0 from digest
@@ -196,7 +196,7 @@ func TestPatchState_ModuleLevelMatching(t *testing.T) {
 		"module.my_secrets": "my-secrets",
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, moduleMappings, nil)
+	patched, result, err := PatchState(stateData, &digest, fields, moduleMappings, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 1, result.FieldsFromDigest) // 0 from digest, not default 30
@@ -248,7 +248,7 @@ func TestPatchState_DefaultFallback(t *testing.T) {
 		},
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, nil, nil)
+	patched, result, err := PatchState(stateData, &digest, fields, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 0, result.FieldsFromDigest)
@@ -312,8 +312,162 @@ func TestPatchState_SkipsSensitive(t *testing.T) {
 		"aws_rds_cluster.my_cluster": "my-cluster",
 	}
 
-	_, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings)
+	_, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.SkippedSensitive)       // masterPassword
 	assert.Equal(t, 1, result.FieldsFromDefaults)      // applyImmediately=false
+}
+
+func TestPatchState_ResolveSensitiveFromConfig(t *testing.T) {
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":     "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::my-cluster",
+					"type":    "aws:rds/cluster:Cluster",
+					"custom":  true,
+					"id":      "my-cluster",
+					"parent":  "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs":  map[string]interface{}{},
+					"outputs": map[string]interface{}{},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::my-cluster",
+				TerraformAddress: "aws_rds_cluster.my_cluster",
+				Attributes: map[string]interface{}{
+					"master_password": "(sensitive)",
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"cluster:Cluster": {
+				NotRead: map[string]FieldInfo{
+					"masterPassword": {Default: nil},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_rds_cluster.my_cluster": "my-cluster",
+	}
+
+	// flattenAddress("aws_rds_cluster.my_cluster", "master_password") = "my_cluster_master_password"
+	configSecrets := map[string]string{
+		"my_cluster_master_password": "super-secret-pw",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+	assert.Equal(t, 1, result.FieldsFromDigest)   // resolved from config
+	assert.Equal(t, 0, result.SkippedSensitive)    // none skipped
+
+	// Verify the patched value is wrapped in the secret sentinel.
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	inputs := resources[0].(map[string]interface{})["inputs"].(map[string]interface{})
+	sentinel, ok := inputs["masterPassword"].(map[string]interface{})
+	require.True(t, ok, "masterPassword should be a secret sentinel map")
+	assert.Equal(t, "1b47061264138c4ac30d75fd1eb44270", sentinel["4dabf18193072939515e22adb298388d"])
+	assert.Equal(t, `"super-secret-pw"`, sentinel["plaintext"])
+
+	// Verify the output was also patched.
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+	outSentinel, ok := outputs["masterPassword"].(map[string]interface{})
+	require.True(t, ok, "output masterPassword should be a secret sentinel map")
+	assert.Equal(t, `"super-secret-pw"`, outSentinel["plaintext"])
+}
+
+func TestPatchState_ResolveSensitiveReplacesNullSentinel(t *testing.T) {
+	// Simulates a cloud API import where the provider Read returns nil for
+	// a write-only field. The import process wraps it in a secret sentinel
+	// with "null" plaintext. The patcher should replace it with the actual value.
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::my-cluster",
+					"type":   "aws:rds/cluster:Cluster",
+					"custom": true,
+					"id":     "my-cluster",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs": map[string]interface{}{},
+					"outputs": map[string]interface{}{
+						"masterPassword": map[string]interface{}{
+							"4dabf18193072939515e22adb298388d": "1b47061264138c4ac30d75fd1eb44270",
+							"plaintext":                        "null",
+						},
+					},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::my-cluster",
+				TerraformAddress: "aws_rds_cluster.my_cluster",
+				Attributes: map[string]interface{}{
+					"master_password": "(sensitive)",
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"cluster:Cluster": {
+				NotRead: map[string]FieldInfo{
+					"masterPassword": {Default: nil},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_rds_cluster.my_cluster": "my-cluster",
+	}
+
+	configSecrets := map[string]string{
+		"my_cluster_master_password": "super-secret-pw",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+	assert.Equal(t, 1, result.FieldsFromDigest)
+	assert.Equal(t, 0, result.SkippedSensitive)
+
+	// Verify input was patched.
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	inputs := resources[0].(map[string]interface{})["inputs"].(map[string]interface{})
+	inSentinel, ok := inputs["masterPassword"].(map[string]interface{})
+	require.True(t, ok, "input masterPassword should be a secret sentinel")
+	assert.Equal(t, `"super-secret-pw"`, inSentinel["plaintext"])
+
+	// Verify output null sentinel was replaced with the actual value.
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+	outSentinel, ok := outputs["masterPassword"].(map[string]interface{})
+	require.True(t, ok, "output masterPassword should be a secret sentinel")
+	assert.Equal(t, `"super-secret-pw"`, outSentinel["plaintext"])
 }

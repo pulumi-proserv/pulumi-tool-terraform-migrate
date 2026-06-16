@@ -15,12 +15,14 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -31,6 +33,8 @@ func newPatchStateCmd() *cobra.Command {
 	var fieldsPath string
 	var mappingFile string
 	var outPath string
+	var projectDir string
+	var stack string
 
 	cmd := &cobra.Command{
 		Use:   "patch-state",
@@ -106,8 +110,34 @@ Example:
 				}
 			}
 
+			// Read config secrets from stack if --project-dir and --stack are set.
+			var configSecrets map[string]string
+			if projectDir != "" && stack != "" {
+				ctx := context.Background()
+				ws, err := auto.NewLocalWorkspace(ctx, auto.WorkDir(projectDir))
+				if err != nil {
+					return fmt.Errorf("creating workspace: %w", err)
+				}
+				allConfig, err := ws.GetAllConfig(ctx, stack)
+				if err != nil {
+					return fmt.Errorf("reading stack config: %w", err)
+				}
+				configSecrets = make(map[string]string, len(allConfig))
+				for key, val := range allConfig {
+					if val.Secret {
+						// Strip "project:" namespace prefix if present.
+						cleanKey := key
+						if idx := strings.Index(key, ":"); idx >= 0 {
+							cleanKey = key[idx+1:]
+						}
+						configSecrets[cleanKey] = val.Value
+					}
+				}
+				fmt.Fprintf(os.Stderr, "Loaded %d secret config values from stack %s\n", len(configSecrets), stack)
+			}
+
 			// Patch.
-			patched, result, err := pkg.PatchState(stateData, &digest, fieldsFile, moduleMappings, resourceMappings)
+			patched, result, err := pkg.PatchState(stateData, &digest, fieldsFile, moduleMappings, resourceMappings, configSecrets)
 			if err != nil {
 				return err
 			}
@@ -136,6 +166,8 @@ Example:
 	cmd.Flags().StringVar(&fieldsPath, "fields", "", "aws-import-diff-fields.json")
 	cmd.Flags().StringVar(&mappingFile, "mapping-file", "", "Path to YAML mapping file")
 	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path for patched state")
+	cmd.Flags().StringVar(&projectDir, "project-dir", "", "Pulumi project directory (for reading stack config secrets)")
+	cmd.Flags().StringVar(&stack, "stack", "", "Pulumi stack name (for reading stack config secrets)")
 
 	cmd.MarkFlagRequired("state")
 	cmd.MarkFlagRequired("digest")
