@@ -35,6 +35,7 @@ func newPatchStateCmd() *cobra.Command {
 	var outPath string
 	var projectDir string
 	var stack string
+	var configDir string
 
 	cmd := &cobra.Command{
 		Use:   "patch-state",
@@ -137,7 +138,7 @@ Example:
 			}
 
 			// Patch.
-			patched, result, err := pkg.PatchState(stateData, &digest, fieldsFile, moduleMappings, resourceMappings, configSecrets)
+			patched, result, err := pkg.PatchState(stateData, &digest, fieldsFile, moduleMappings, resourceMappings, configSecrets, configDir)
 			if err != nil {
 				return err
 			}
@@ -168,6 +169,7 @@ Example:
 	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path for patched state")
 	cmd.Flags().StringVar(&projectDir, "project-dir", "", "Pulumi project directory (for reading stack config secrets)")
 	cmd.Flags().StringVar(&stack, "stack", "", "Pulumi stack name (for reading stack config secrets)")
+	cmd.Flags().StringVar(&configDir, "config-dir", "", "TF config directory (for resolving asset file paths)")
 
 	cmd.MarkFlagRequired("state")
 	cmd.MarkFlagRequired("digest")

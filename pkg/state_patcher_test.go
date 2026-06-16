@@ -15,7 +15,11 @@
 package pkg
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -111,7 +115,7 @@ func TestPatchState_PatchesFromDigest(t *testing.T) {
 		"aws_secretsmanager_secret.my_secret": "my-secret",
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil)
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 1, result.FieldsFromDigest) // recovery_window_in_days=0 from digest
@@ -196,7 +200,7 @@ func TestPatchState_ModuleLevelMatching(t *testing.T) {
 		"module.my_secrets": "my-secrets",
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, moduleMappings, nil, nil)
+	patched, result, err := PatchState(stateData, &digest, fields, moduleMappings, nil, nil, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 1, result.FieldsFromDigest) // 0 from digest, not default 30
@@ -248,7 +252,7 @@ func TestPatchState_DefaultFallback(t *testing.T) {
 		},
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, nil, nil, nil)
+	patched, result, err := PatchState(stateData, &digest, fields, nil, nil, nil, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 0, result.FieldsFromDigest)
@@ -312,7 +316,7 @@ func TestPatchState_SkipsSensitive(t *testing.T) {
 		"aws_rds_cluster.my_cluster": "my-cluster",
 	}
 
-	_, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil)
+	_, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.SkippedSensitive)       // masterPassword
 	assert.Equal(t, 1, result.FieldsFromDefaults)      // applyImmediately=false
@@ -369,7 +373,7 @@ func TestPatchState_ResolveSensitiveFromConfig(t *testing.T) {
 		"my_cluster_master_password": "super-secret-pw",
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets)
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 1, result.FieldsFromDigest)   // resolved from config
@@ -450,7 +454,7 @@ func TestPatchState_ResolveSensitiveReplacesNullSentinel(t *testing.T) {
 		"my_cluster_master_password": "super-secret-pw",
 	}
 
-	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets)
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
 	assert.Equal(t, 1, result.FieldsFromDigest)
@@ -470,4 +474,85 @@ func TestPatchState_ResolveSensitiveReplacesNullSentinel(t *testing.T) {
 	outSentinel, ok := outputs["masterPassword"].(map[string]interface{})
 	require.True(t, ok, "output masterPassword should be a secret sentinel")
 	assert.Equal(t, `"super-secret-pw"`, outSentinel["plaintext"])
+}
+
+func TestPatchState_AssetSentinel(t *testing.T) {
+	// Create a temp file to act as the asset source.
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "swagger-ui", "index.html")
+	require.NoError(t, os.MkdirAll(filepath.Dir(testFile), 0o755))
+	require.NoError(t, os.WriteFile(testFile, []byte("<html>hello</html>"), 0o644))
+
+	// Compute expected hash.
+	h := sha256.New()
+	h.Write([]byte("<html>hello</html>"))
+	expectedHash := hex.EncodeToString(h.Sum(nil))
+
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:s3/bucketObject:BucketObject::my-obj",
+					"type":   "aws:s3/bucketObject:BucketObject",
+					"custom": true,
+					"id":     "bucket/index.html",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					// source is a plain TF string (from import)
+					"inputs":  map[string]interface{}{"source": "swagger-ui/index.html"},
+					"outputs": map[string]interface{}{"source": "swagger-ui/index.html"},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucketObject:BucketObject::my-obj",
+				TerraformAddress: "aws_s3_object.my_obj",
+				Attributes: map[string]interface{}{
+					"source": "swagger-ui/index.html",
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"bucketObject:BucketObject": {
+				NotRead: map[string]FieldInfo{
+					"source": {Default: nil, Asset: "FileAsset"},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_s3_object.my_obj": "my-obj",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+	assert.Equal(t, 1, result.FieldsFromDigest)
+
+	// Verify the input was patched to an asset sentinel.
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	inputs := resources[0].(map[string]interface{})["inputs"].(map[string]interface{})
+	sentinel, ok := inputs["source"].(map[string]interface{})
+	require.True(t, ok, "source should be an asset sentinel map")
+	assert.Equal(t, "c44067f5952c0a294b673a41bacd8c17", sentinel["4dabf18193072939515e22adb298388d"])
+	assert.Equal(t, expectedHash, sentinel["hash"])
+	assert.Equal(t, testFile, sentinel["path"])
+
+	// Verify output was also patched.
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+	outSentinel, ok := outputs["source"].(map[string]interface{})
+	require.True(t, ok, "output source should be an asset sentinel map")
+	assert.Equal(t, expectedHash, outSentinel["hash"])
 }
