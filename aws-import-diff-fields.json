@@ -1,5 +1,8 @@
 {
   "description" : "AWS provider fields that cause post-import diffs. Each field includes metadata describing exactly what the provider does with the value on create, update, and delete.",
+  "provider" : "pulumi-aws",
+  "provider_version" : "7.31.0",
+  "bridge_version" : "3.121.0",
   "references" : {
     "bridge_default_diff" : "https://github.com/pulumi/pulumi-terraform-bridge/issues/2436",
     "bridge_typeset" : "https://github.com/pulumi/pulumi-terraform-bridge/issues/3324",
@@ -145,6 +148,7 @@
         "source" : {
           "default" : null,
           "asset" : "FileAsset",
+          "assetKind" : 0,
           "read_from_aws" : false,
           "sent_to_aws_on_create" : true,
           "sent_to_aws_on_update" : true,
@@ -444,6 +448,9 @@
         "code" : {
           "default" : null,
           "asset" : "FileArchive",
+          "assetKind" : 1,
+          "archiveFormat" : 3,
+          "hashField" : "source_code_hash",
           "read_from_aws" : false,
           "sent_to_aws_on_create" : true,
           "sent_to_aws_on_update" : true,

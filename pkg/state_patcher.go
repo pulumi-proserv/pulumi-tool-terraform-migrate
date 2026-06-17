@@ -43,8 +43,11 @@ type FieldCategory struct {
 
 // FieldInfo describes a single not_read field.
 type FieldInfo struct {
-	Default interface{} `json:"default"`
-	Asset   string      `json:"asset,omitempty"` // "FileAsset" or "FileArchive"
+	Default       interface{} `json:"default"`
+	Asset         string      `json:"asset,omitempty"`         // "FileAsset" or "FileArchive"
+	AssetKind     *int        `json:"assetKind,omitempty"`     // bridge AssetTranslationKind (0=FileAsset, 1=FileArchive)
+	ArchiveFormat *int        `json:"archiveFormat,omitempty"` // resource.ArchiveFormat (3=ZIPArchive)
+	HashField     string      `json:"hashField,omitempty"`     // e.g. "source_code_hash"
 }
 
 // PatchStateResult contains statistics from the patch operation.
@@ -316,8 +319,11 @@ func PatchState(
 
 	// fieldMeta holds per-field metadata from the fields file.
 	type fieldMeta struct {
-		Default interface{}
-		Asset   string // "FileAsset", "FileArchive", or ""
+		Default       interface{}
+		Asset         string // "FileAsset", "FileArchive", or ""
+		AssetKind     *int
+		ArchiveFormat *int
+		HashField     string
 	}
 
 	// Build not_read field sets and defaults, keyed by both full and short type.
@@ -328,7 +334,13 @@ func PatchState(
 		if len(cat.NotRead) > 0 {
 			fields := make(map[string]fieldMeta, len(cat.NotRead))
 			for pulumiField, info := range cat.NotRead {
-				fields[pulumiField] = fieldMeta{Default: info.Default, Asset: info.Asset}
+				fields[pulumiField] = fieldMeta{
+					Default:       info.Default,
+					Asset:         info.Asset,
+					AssetKind:     info.AssetKind,
+					ArchiveFormat: info.ArchiveFormat,
+					HashField:     info.HashField,
+				}
 			}
 			// Index by both full type and short type for lookup flexibility.
 			notReadByType[fullType] = fields
@@ -404,6 +416,8 @@ func PatchState(
 		}
 
 		patched := false
+		var patchedAssetFields []assetFieldDeltaInfo
+
 		for pulumiField, meta := range notReadFields {
 			tfAttr := pulumiToTFField[pulumiField]
 
@@ -490,6 +504,20 @@ func PatchState(
 					inputsRaw[pulumiField] = digVal
 					result.FieldsFromDigest++
 					patched = true
+					// Track asset fields for delta update.
+					if isAssetSentinel && meta.AssetKind != nil {
+						format := 0
+						if meta.ArchiveFormat != nil {
+							format = *meta.ArchiveFormat
+						}
+						patchedAssetFields = append(patchedAssetFields, assetFieldDeltaInfo{
+							pulumiField: pulumiField,
+							tfField:     tfAttr,
+							kind:        *meta.AssetKind,
+							format:      format,
+							hashField:   meta.HashField,
+						})
+					}
 				} else if digSensitive {
 					result.SkippedSensitive++
 				} else if meta.Default != nil {
@@ -515,12 +543,17 @@ func PatchState(
 
 		if patched {
 			result.Patched++
-			// Remove __pulumi_raw_state_delta from outputs. The bridge stores
-			// this delta to reconstruct TF raw state from PropertyMap, but our
-			// patches change the PropertyMap shape. A stale delta causes
-			// "does not apply cleanly" provider panics.
-			delete(outputsRaw, "__pulumi_raw_state_delta")
-		} else if digResource == nil {
+		}
+		// If any asset fields were patched, update __pulumi_raw_state_delta
+		// to include the correct asset delta entries. The bridge uses this
+		// delta to reconstruct TF raw state from the PropertyMap. Without
+		// the matching asset delta, the bridge panics ("does not apply cleanly").
+		// Non-asset fields don't need delta changes — the delta handles simple
+		// value changes (string/number/bool) naturally.
+		if deltaRaw, hasDelta := outputsRaw["__pulumi_raw_state_delta"]; hasDelta && len(patchedAssetFields) > 0 {
+			outputsRaw["__pulumi_raw_state_delta"] = injectAssetDeltas(deltaRaw, patchedAssetFields)
+		}
+		if !patched && digResource == nil {
 			result.NoMatch++
 		}
 
@@ -701,6 +734,54 @@ func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface
 	tmpFile.Close()
 
 	return buildAssetArchiveFromZip(tmpFile.Name())
+}
+
+// assetFieldDeltaInfo holds info needed to inject an asset delta entry.
+type assetFieldDeltaInfo struct {
+	pulumiField string
+	tfField     string
+	kind        int
+	format      int
+	hashField   string
+}
+
+// injectAssetDeltas updates the __pulumi_raw_state_delta to include asset delta
+// entries for patched asset fields. The delta is a nested obj structure; we add
+// property delta entries matching the bridge's assetDelta format.
+func injectAssetDeltas(deltaRaw interface{}, fields []assetFieldDeltaInfo) interface{} {
+	delta, ok := deltaRaw.(map[string]interface{})
+	if !ok || delta == nil {
+		return deltaRaw
+	}
+
+	// The top-level delta should be an "obj" with "ps" (property deltas).
+	obj, ok := delta["obj"].(map[string]interface{})
+	if !ok {
+		return deltaRaw
+	}
+	ps, ok := obj["ps"].(map[string]interface{})
+	if !ok {
+		ps = map[string]interface{}{}
+		obj["ps"] = ps
+	}
+
+	for _, f := range fields {
+		// Build the asset delta entry matching the bridge's assetDelta JSON format.
+		assetDelta := map[string]interface{}{
+			"kind": f.kind,
+		}
+		if f.format != 0 {
+			assetDelta["archiveFormat"] = f.format
+		}
+		if f.hashField != "" {
+			assetDelta["hashField"] = f.hashField
+		}
+		ps[f.pulumiField] = map[string]interface{}{
+			"asset": assetDelta,
+		}
+	}
+
+	return delta
 }
 
 // isAssetOrArchiveSentinel checks if a value is a Pulumi asset or archive sentinel.

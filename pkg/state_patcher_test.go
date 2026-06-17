@@ -557,11 +557,10 @@ func TestPatchState_AssetSentinel(t *testing.T) {
 	assert.Equal(t, expectedHash, outSentinel["hash"])
 }
 
-func TestPatchState_RemovesRawStateDelta(t *testing.T) {
-	// When a resource is patched, __pulumi_raw_state_delta must be removed
-	// from outputs. The bridge stores this delta to reconstruct TF raw state
-	// from the PropertyMap, but patching changes the PropertyMap shape
-	// (e.g., string → asset sentinel). A stale delta causes provider panics.
+func TestPatchState_PreservesRawStateDelta(t *testing.T) {
+	// When a non-asset resource is patched, __pulumi_raw_state_delta should
+	// be preserved. The delta handles simple value changes (string/number/bool)
+	// naturally — only asset fields need delta updates.
 	state := map[string]interface{}{
 		"version": 3,
 		"deployment": map[string]interface{}{
@@ -637,14 +636,193 @@ func TestPatchState_RemovesRawStateDelta(t *testing.T) {
 	require.NoError(t, json.Unmarshal(patched, &patchedState))
 	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
 
-	// Patched resource: __pulumi_raw_state_delta should be removed.
+	// Patched non-asset resource: delta should be preserved.
 	patchedOutputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
 	_, hasDelta := patchedOutputs["__pulumi_raw_state_delta"]
-	assert.False(t, hasDelta, "__pulumi_raw_state_delta should be removed from patched resource")
+	assert.True(t, hasDelta, "__pulumi_raw_state_delta should be preserved on non-asset patched resource")
 	assert.Equal(t, "arn:aws:secretsmanager:us-east-1:123:secret:foo", patchedOutputs["arn"])
 
 	// Unpatched resource: __pulumi_raw_state_delta should be preserved.
 	unpatchedOutputs := resources[1].(map[string]interface{})["outputs"].(map[string]interface{})
 	_, hasDelta = unpatchedOutputs["__pulumi_raw_state_delta"]
 	assert.True(t, hasDelta, "__pulumi_raw_state_delta should be preserved on unpatched resource")
+}
+
+func TestPatchState_InjectsAssetDelta(t *testing.T) {
+	// When an asset field is patched, the __pulumi_raw_state_delta should be
+	// updated with an asset delta entry, not removed. This allows the bridge
+	// to correctly reconstruct the TF raw state via TranslateAsset/TranslateArchive.
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "swagger-ui", "index.html")
+	require.NoError(t, os.MkdirAll(filepath.Dir(testFile), 0o755))
+	require.NoError(t, os.WriteFile(testFile, []byte("<html>hello</html>"), 0o644))
+
+	assetKind := 0 // FileAsset
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:s3/bucketObject:BucketObject::my-obj",
+					"type":   "aws:s3/bucketObject:BucketObject",
+					"custom": true,
+					"id":     "bucket/index.html",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs":  map[string]interface{}{"source": "swagger-ui/index.html"},
+					"outputs": map[string]interface{}{
+						"source": "swagger-ui/index.html",
+						"__pulumi_raw_state_delta": map[string]interface{}{
+							"obj": map[string]interface{}{
+								"ps": map[string]interface{}{
+									"tags": map[string]interface{}{"map": map[string]interface{}{}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucketObject:BucketObject::my-obj",
+				TerraformAddress: "aws_s3_object.my_obj",
+				Attributes: map[string]interface{}{
+					"source": "swagger-ui/index.html",
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"bucketObject:BucketObject": {
+				NotRead: map[string]FieldInfo{
+					"source": {Default: nil, Asset: "FileAsset", AssetKind: &assetKind},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_s3_object.my_obj": "my-obj",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+
+	// Delta should still exist (not removed).
+	delta, hasDelta := outputs["__pulumi_raw_state_delta"].(map[string]interface{})
+	require.True(t, hasDelta, "delta should be present after asset patching")
+
+	// Delta should have the asset entry injected for "source".
+	obj := delta["obj"].(map[string]interface{})
+	ps := obj["ps"].(map[string]interface{})
+	sourceDelta, hasSource := ps["source"].(map[string]interface{})
+	require.True(t, hasSource, "delta should have source property delta")
+
+	assetEntry, hasAsset := sourceDelta["asset"].(map[string]interface{})
+	require.True(t, hasAsset, "source delta should be an asset delta")
+	assert.Equal(t, float64(0), assetEntry["kind"]) // FileAsset = 0
+
+	// Existing delta entries (tags) should be preserved.
+	_, hasTags := ps["tags"]
+	assert.True(t, hasTags, "existing tags delta should be preserved")
+}
+
+func TestPatchState_InjectsArchiveDelta(t *testing.T) {
+	// For FileArchive fields, the delta should include archiveFormat and hashField.
+	tmpDir := t.TempDir()
+	lambdaDir := filepath.Join(tmpDir, "my_lambda")
+	require.NoError(t, os.MkdirAll(lambdaDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(lambdaDir, "index.py"), []byte("print('hello')"), 0o644))
+
+	assetKind := 1    // FileArchive
+	archiveFormat := 3 // ZIPArchive
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:lambda/function:Function::my-fn",
+					"type":   "aws:lambda/function:Function",
+					"custom": true,
+					"id":     "my-fn",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs":  map[string]interface{}{},
+					"outputs": map[string]interface{}{
+						"__pulumi_raw_state_delta": map[string]interface{}{
+							"obj": map[string]interface{}{
+								"ps": map[string]interface{}{},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:lambda/function:Function::my-fn",
+				TerraformAddress: "aws_lambda_function.my_fn",
+				Attributes: map[string]interface{}{
+					"filename": "./my_lambda.zip",
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"function:Function": {
+				NotRead: map[string]FieldInfo{
+					"code": {
+						Default:       nil,
+						Asset:         "FileArchive",
+						AssetKind:     &assetKind,
+						ArchiveFormat: &archiveFormat,
+						HashField:     "source_code_hash",
+					},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_lambda_function.my_fn": "my-fn",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+
+	// Delta should have archive entry for "code".
+	delta := outputs["__pulumi_raw_state_delta"].(map[string]interface{})
+	obj := delta["obj"].(map[string]interface{})
+	ps := obj["ps"].(map[string]interface{})
+	codeDelta := ps["code"].(map[string]interface{})
+	assetEntry := codeDelta["asset"].(map[string]interface{})
+
+	assert.Equal(t, float64(1), assetEntry["kind"])            // FileArchive
+	assert.Equal(t, float64(3), assetEntry["archiveFormat"])    // ZIPArchive
+	assert.Equal(t, "source_code_hash", assetEntry["hashField"])
 }
