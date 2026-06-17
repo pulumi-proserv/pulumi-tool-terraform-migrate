@@ -515,6 +515,11 @@ func PatchState(
 
 		if patched {
 			result.Patched++
+			// Remove __pulumi_raw_state_delta from outputs. The bridge stores
+			// this delta to reconstruct TF raw state from PropertyMap, but our
+			// patches change the PropertyMap shape. A stale delta causes
+			// "does not apply cleanly" provider panics.
+			delete(outputsRaw, "__pulumi_raw_state_delta")
 		} else if digResource == nil {
 			result.NoMatch++
 		}

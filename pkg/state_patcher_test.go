@@ -556,3 +556,95 @@ func TestPatchState_AssetSentinel(t *testing.T) {
 	require.True(t, ok, "output source should be an asset sentinel map")
 	assert.Equal(t, expectedHash, outSentinel["hash"])
 }
+
+func TestPatchState_RemovesRawStateDelta(t *testing.T) {
+	// When a resource is patched, __pulumi_raw_state_delta must be removed
+	// from outputs. The bridge stores this delta to reconstruct TF raw state
+	// from the PropertyMap, but patching changes the PropertyMap shape
+	// (e.g., string → asset sentinel). A stale delta causes provider panics.
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::my-secret",
+					"type":   "aws:secretsmanager/secret:Secret",
+					"custom": true,
+					"id":     "arn:aws:secretsmanager:us-east-1:123:secret:foo",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs": map[string]interface{}{},
+					"outputs": map[string]interface{}{
+						"__pulumi_raw_state_delta": map[string]interface{}{
+							"obj": map[string]interface{}{
+								"ps": map[string]interface{}{},
+							},
+						},
+						"arn": "arn:aws:secretsmanager:us-east-1:123:secret:foo",
+					},
+				},
+				// Unpatched resource should keep its delta.
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:s3/bucket:Bucket::my-bucket",
+					"type":   "aws:s3/bucket:Bucket",
+					"custom": true,
+					"id":     "my-bucket",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs": map[string]interface{}{"bucket": "my-bucket"},
+					"outputs": map[string]interface{}{
+						"__pulumi_raw_state_delta": map[string]interface{}{
+							"obj": map[string]interface{}{},
+						},
+						"bucket": "my-bucket",
+					},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::my-secret",
+				TerraformAddress: "aws_secretsmanager_secret.foo",
+				Attributes: map[string]interface{}{
+					"recovery_window_in_days": float64(0),
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"secret:Secret": {
+				NotRead: map[string]FieldInfo{
+					"recoveryWindowInDays": {Default: float64(30)},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_secretsmanager_secret.foo": "my-secret",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+
+	// Patched resource: __pulumi_raw_state_delta should be removed.
+	patchedOutputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+	_, hasDelta := patchedOutputs["__pulumi_raw_state_delta"]
+	assert.False(t, hasDelta, "__pulumi_raw_state_delta should be removed from patched resource")
+	assert.Equal(t, "arn:aws:secretsmanager:us-east-1:123:secret:foo", patchedOutputs["arn"])
+
+	// Unpatched resource: __pulumi_raw_state_delta should be preserved.
+	unpatchedOutputs := resources[1].(map[string]interface{})["outputs"].(map[string]interface{})
+	_, hasDelta = unpatchedOutputs["__pulumi_raw_state_delta"]
+	assert.True(t, hasDelta, "__pulumi_raw_state_delta should be preserved on unpatched resource")
+}
