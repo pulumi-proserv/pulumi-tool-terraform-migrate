@@ -420,6 +420,7 @@ func PatchState(
 
 		patched := false
 		var patchedAssetFields []assetFieldDeltaInfo
+		var patchedOutputFields []patchedOutputFieldInfo
 
 		for pulumiField, meta := range notReadFields {
 			tfAttr := pulumiToTFField[pulumiField]
@@ -543,10 +544,21 @@ func PatchState(
 			outputIsNullSentinel := isSentinel && isNullSentinel(outputVal)
 			outputIsBadAsset := isAssetSentinel && outputVal != nil && !isAssetOrArchiveSentinel(outputVal)
 			if outputEmpty || outputIsBadPlain || outputIsNullSentinel || outputIsBadAsset {
+				var newOutputVal interface{}
 				if !digEmpty {
-					outputsRaw[pulumiField] = digVal
+					newOutputVal = digVal
 				} else if meta.Default != nil {
-					outputsRaw[pulumiField] = meta.Default
+					newOutputVal = meta.Default
+				}
+				if newOutputVal != nil {
+					outputsRaw[pulumiField] = newOutputVal
+					// Track patched output fields that need delta updates.
+					// The delta must match the output structure for Recover to work.
+					patchedOutputFields = append(patchedOutputFields, patchedOutputFieldInfo{
+						pulumiField: pulumiField,
+						oldValue:    outputVal,
+						newValue:    newOutputVal,
+					})
 				}
 			}
 		}
@@ -554,14 +566,18 @@ func PatchState(
 		if patched {
 			result.Patched++
 		}
-		// If any asset fields were patched, update __pulumi_raw_state_delta
-		// to include the correct asset delta entries. The bridge uses this
-		// delta to reconstruct TF raw state from the PropertyMap. Without
-		// the matching asset delta, the bridge panics ("does not apply cleanly").
-		// Non-asset fields don't need delta changes — the delta handles simple
-		// value changes (string/number/bool) naturally.
-		if deltaRaw, hasDelta := outputsRaw["__pulumi_raw_state_delta"]; hasDelta && len(patchedAssetFields) > 0 {
-			outputsRaw["__pulumi_raw_state_delta"] = injectAssetDeltas(deltaRaw, patchedAssetFields)
+		// Update __pulumi_raw_state_delta when patched output fields change
+		// the structure of values referenced by the delta. The bridge uses
+		// this delta to reconstruct TF raw state from the PropertyMap.
+		// Without matching delta entries, the bridge panics with
+		// "does not apply cleanly" or "map vs object confusion".
+		if deltaRaw, hasDelta := outputsRaw["__pulumi_raw_state_delta"]; hasDelta {
+			if len(patchedAssetFields) > 0 {
+				outputsRaw["__pulumi_raw_state_delta"] = injectAssetDeltas(deltaRaw, patchedAssetFields)
+			}
+			if len(patchedOutputFields) > 0 {
+				outputsRaw["__pulumi_raw_state_delta"] = updateDeltaForPatchedOutputs(outputsRaw["__pulumi_raw_state_delta"], patchedOutputFields)
+			}
 		}
 		if !patched && digResource == nil {
 			result.NoMatch++
@@ -787,6 +803,13 @@ func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface
 	return buildAssetArchiveFromZip(tmpFile.Name())
 }
 
+// patchedOutputFieldInfo tracks an output field that was modified by the patcher.
+type patchedOutputFieldInfo struct {
+	pulumiField string
+	oldValue    interface{}
+	newValue    interface{}
+}
+
 // assetFieldDeltaInfo holds info needed to inject an asset delta entry.
 type assetFieldDeltaInfo struct {
 	pulumiField string
@@ -833,6 +856,109 @@ func injectAssetDeltas(deltaRaw interface{}, fields []assetFieldDeltaInfo) inter
 	}
 
 	return delta
+}
+
+// updateDeltaForPatchedOutputs updates the __pulumi_raw_state_delta when the patcher
+// changes output fields that are referenced by the delta. When an array goes from
+// empty to populated (or changes element count), the delta's element entries must
+// be updated to match, otherwise the bridge's Recover panics with
+// "rawStateRecoverNatural cannot process Object values due to map vs object confusion".
+func updateDeltaForPatchedOutputs(deltaRaw interface{}, fields []patchedOutputFieldInfo) interface{} {
+	delta, ok := deltaRaw.(map[string]interface{})
+	if !ok || delta == nil {
+		return deltaRaw
+	}
+
+	obj, ok := delta["obj"].(map[string]interface{})
+	if !ok {
+		return deltaRaw
+	}
+	ps, ok := obj["ps"].(map[string]interface{})
+	if !ok {
+		return deltaRaw
+	}
+
+	for _, f := range fields {
+		existing, inDelta := ps[f.pulumiField]
+		if !inDelta {
+			continue // field not in delta, no update needed
+		}
+
+		// Check if the existing delta entry is an array type.
+		existingMap, ok := existing.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		arrDelta, isArr := existingMap["arr"]
+		if !isArr {
+			continue
+		}
+
+		// Rebuild the array delta to match the new value's structure.
+		newArr, ok := f.newValue.([]interface{})
+		if !ok {
+			continue
+		}
+
+		newArrDelta := buildArrayDelta(arrDelta, newArr)
+		ps[f.pulumiField] = map[string]interface{}{
+			"arr": newArrDelta,
+		}
+	}
+
+	return delta
+}
+
+// buildArrayDelta builds an array delta entry that matches the given array value.
+// It preserves existing element deltas where possible and adds new entries for
+// elements that are objects (which need explicit "obj" deltas for Recover to work).
+func buildArrayDelta(existingArrDelta interface{}, newArr []interface{}) map[string]interface{} {
+	result := map[string]interface{}{}
+
+	// Copy existing array delta fields (except "el" which we'll rebuild).
+	if existing, ok := existingArrDelta.(map[string]interface{}); ok {
+		for k, v := range existing {
+			if k != "el" {
+				result[k] = v
+			}
+		}
+	}
+
+	// Build element deltas for each element in the new array.
+	// Objects need explicit {"obj": {}} entries; primitives don't need entries.
+	elements := map[string]interface{}{}
+	for i, elem := range newArr {
+		delta := buildValueDelta(elem)
+		if delta != nil {
+			elements[fmt.Sprintf("%d", i)] = delta
+		}
+	}
+
+	if len(elements) > 0 {
+		result["el"] = elements
+	}
+
+	return result
+}
+
+// buildValueDelta builds a delta entry for a value based on its type.
+// Returns nil for primitive types (string, bool, number) which don't need
+// explicit delta entries — rawStateRecoverNatural handles them.
+// Returns {"obj": {}} for objects and {"arr": ...} for nested arrays.
+func buildValueDelta(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		// Check if this is a Pulumi sentinel (asset/archive/secret) — skip those,
+		// they're handled by the asset delta injection or naturally.
+		if _, isSentinel := val[sigKey]; isSentinel {
+			return nil
+		}
+		return map[string]interface{}{"obj": map[string]interface{}{}}
+	case []interface{}:
+		return map[string]interface{}{"arr": buildArrayDelta(nil, val)}
+	default:
+		return nil // primitives don't need delta entries
+	}
 }
 
 // hashFileArchive computes the hash of a directory archive using the Pulumi SDK's

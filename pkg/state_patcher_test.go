@@ -914,3 +914,117 @@ func TestPatchState_CamelCasesNestedDigestKeys(t *testing.T) {
 	_, hasSnake := param["apply_method"]
 	assert.False(t, hasSnake, "apply_method should not be present (should be applyMethod)")
 }
+
+func TestPatchState_UpdatesDeltaWhenArrayOutputPatched(t *testing.T) {
+	// When the patcher fills an empty array output with objects from the digest,
+	// the __pulumi_raw_state_delta must be updated to include element deltas
+	// for each object. Without this, the bridge's Recover panics with
+	// "rawStateRecoverNatural cannot process Object values due to map vs object confusion".
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:rds/clusterParameterGroup:ClusterParameterGroup::rds-cluster-params",
+					"type":   "aws:rds/clusterParameterGroup:ClusterParameterGroup",
+					"custom": true,
+					"id":     "my-cluster-params",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs": map[string]interface{}{
+						"parameters": nil, // null in inputs
+					},
+					"outputs": map[string]interface{}{
+						"parameters": []interface{}{}, // empty array in outputs
+						"__pulumi_raw_state_delta": map[string]interface{}{
+							"obj": map[string]interface{}{
+								"ps": map[string]interface{}{
+									"parameters": map[string]interface{}{
+										"arr": map[string]interface{}{}, // empty — no element deltas
+									},
+									"tags":    map[string]interface{}{"map": map[string]interface{}{}},
+									"tagsAll": map[string]interface{}{"map": map[string]interface{}{}},
+								},
+								"renamed": map[string]interface{}{
+									"parameters": "parameter",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	stateData, _ := json.Marshal(state)
+
+	digest := ModuleMap{
+		Modules: map[string]*ModuleMapEntry{
+			"rds": {
+				Resources: []ModuleResource{
+					{
+						Mode:             "managed",
+						TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/clusterParameterGroup:ClusterParameterGroup::rds-cluster-params",
+						TerraformAddress: "module.rds.aws_rds_cluster_parameter_group.cluster_param_group",
+						Attributes: map[string]interface{}{
+							"parameter": []interface{}{
+								map[string]interface{}{
+									"apply_method": "immediate",
+									"name":         "rds.force_ssl",
+									"value":        "1",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fields := &FieldsFile{
+		Fields: map[string]FieldCategory{
+			"clusterParameterGroup:ClusterParameterGroup": {
+				NotRead: map[string]FieldInfo{
+					"parameters": {Default: nil},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"module.rds.aws_rds_cluster_parameter_group.cluster_param_group": "rds-cluster-params",
+	}
+
+	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+
+	// Verify parameters output was patched.
+	params := outputs["parameters"].([]interface{})
+	require.Len(t, params, 1)
+	param := params[0].(map[string]interface{})
+	assert.Equal(t, "immediate", param["applyMethod"])
+	assert.Equal(t, "rds.force_ssl", param["name"])
+
+	// Verify delta was updated with element delta for the new object.
+	delta := outputs["__pulumi_raw_state_delta"].(map[string]interface{})
+	ps := delta["obj"].(map[string]interface{})["ps"].(map[string]interface{})
+	paramsDelta := ps["parameters"].(map[string]interface{})
+	arrDelta := paramsDelta["arr"].(map[string]interface{})
+
+	// Should now have element deltas (not empty).
+	el, hasEl := arrDelta["el"]
+	assert.True(t, hasEl, "arr delta should have 'el' with element deltas after patching")
+
+	elMap := el.(map[string]interface{})
+	elem0, has0 := elMap["0"]
+	assert.True(t, has0, "element delta should have entry for index 0")
+
+	// Element 0 should be marked as an object.
+	elem0Map := elem0.(map[string]interface{})
+	_, hasObj := elem0Map["obj"]
+	assert.True(t, hasObj, "element 0 delta should have 'obj' marker")
+}
