@@ -1,17 +1,20 @@
 # pulumi-tool-terraform-migrate
 
-This is an EXPERIMENTAL tool for assisting migrating Terraform projects to Pulumi.
+This is a fork of `pulumi/pulumi-tool-terraform-migrate` that extends the tool with commands to support Pulumi's native `pulumi import` workflow. The upstream tool provides a `stack` command for direct state translation (TF state → Pulumi state). This fork adds commands that supplement the standard import process:
+
+- **`tf-digest`** — Digests TF sources + state into an agent-safe JSON sidecar, auto-discovers secrets, and sets them as Pulumi stack config
+- **`import-id-match`** — Fills `pulumi preview --import-file` skeleton with import IDs from the digest, matching TF modules to Pulumi components via mappings
+- **`patch-state`** — Patches imported Pulumi state with field values the cloud API doesn't return (write-only fields, IaC-only defaults, asset sentinels), eliminating post-import diffs
+- **`set-secrets`** — Extracts specific secret values from TF state and sets them as Pulumi config secrets
+
+These commands are designed to work together in a pipeline: `tf-digest` → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview.
 
 For robust approaches to migration please see the
 [official documentation](https://www.pulumi.com/docs/iac/guides/migration/migrating-to-pulumi/from-terraform/).
 
-## Usage
+## Upstream: `stack` command (state translation)
 
-This tool is useful in pipelines that given a Terraform project with sources and state aim to produce equivalent Pulumi
-sources and state tracking the same infrastructure. Crucially such pipelines should not do any write operations on the
-actual infrastructure, staying in the purely symbolic exploratory world.
-
-The key command translates an entire stack:
+The upstream `stack` command translates an entire TF state directly into a Pulumi stack state without using `pulumi import`:
 
 ```
 $ pulumi plugin run terraform-migrate -- stack --help
@@ -371,3 +374,57 @@ Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
               │   my_bucket: my-bucket       │
               └──────────────────────────────┘
 ```
+
+---
+
+## `patch-state` command
+
+After `pulumi import`, the cloud API's Read doesn't return all field values. Write-only fields
+(passwords, file paths, asset content), IaC-only fields (forceDestroy, applyImmediately),
+and asset/archive fields are missing from the imported state, causing diffs on every preview.
+
+The `patch-state` command fills these fields from the TF digest and a field classification file:
+
+```bash
+pulumi plugin run terraform-migrate -- patch-state \
+  --state /tmp/exported-state.json \
+  --digest tf-digest.json \
+  --fields aws-import-diff-fields.json \
+  --mapping-file mappings.yaml \
+  --project-dir . --stack dev \
+  --config-dir ../environments/develop \
+  --out /tmp/patched-state.json
+```
+
+### What it patches
+
+| Category | Examples | Source |
+|----------|----------|--------|
+| IaC-only defaults | `forceDestroy`, `applyImmediately` | TF SDK schema defaults from `aws-import-diff-fields.json` |
+| Write-only fields | `masterPassword`, `secretString` | TF digest values (sensitive values resolved from stack config secrets) |
+| Asset fields | Lambda `code`, S3 object `source` | File paths from TF config dir, converted to Pulumi asset/archive sentinels |
+| Read-filtered | ClusterParameterGroup `parameters` | TF digest (provider Read filters by source) |
+
+### Flags
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--state` | Yes | Path to exported Pulumi state (`pulumi stack export --show-secrets`) |
+| `--digest` | Yes | Path to `tf-digest.json` |
+| `--fields` | Yes | Path to `aws-import-diff-fields.json` (field classification metadata) |
+| `--mapping-file` | No | Path to `mappings.yaml` (same as `import-id-match`) |
+| `--project-dir` | No | Pulumi project dir (for reading config secrets) |
+| `--stack` | No | Stack name (for reading config secrets) |
+| `--config-dir` | No | TF config dir (for resolving asset file paths) |
+| `--out` / `-o` | Yes | Output path for patched state |
+
+### Delta handling
+
+The patcher updates the `__pulumi_raw_state_delta` (used by the bridge to reconstruct
+TF raw state) when patched output fields change the structure of values in the delta.
+For example, when an empty array is filled with objects, the delta's element entries are
+rebuilt to include `{"obj": {}}` markers for each element. This prevents the bridge from
+panicking with "map vs object confusion" during Diff.
+
+For asset fields (FileAsset, FileArchive), the patcher injects the correct asset delta
+entry with the bridge's `AssetTranslationKind` enum value (FileAsset=0, FileArchive=2).
