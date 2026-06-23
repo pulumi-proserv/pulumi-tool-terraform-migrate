@@ -1265,3 +1265,290 @@ func TestPatchStateV2_SensitiveResolution(t *testing.T) {
 	require.True(t, ok, "output masterPassword should be a secret sentinel map")
 	assert.Equal(t, `"super-secret-pw"`, outSentinel["plaintext"])
 }
+
+func TestPatchStateV2_FieldPresentNoOverwrite(t *testing.T) {
+	t.Parallel()
+
+	// Build provider with force_destroy as optional.
+	prov := buildTestProvider(t, "aws_s3_bucket", map[string]testFieldDef{
+		"force_destroy": {optional: true},
+		"bucket":        {optional: true},
+	})
+	providers, typeMap := buildV2Providers(t, prov, map[string]string{
+		"aws_s3_bucket": "aws:s3/bucket:Bucket",
+	})
+
+	// State has forceDestroy = false (already set).
+	stateData := buildTestState("aws:s3/bucket:Bucket", "my-bucket", map[string]any{
+		"bucket":       "my-bucket",
+		"forceDestroy": false,
+	})
+
+	// Digest has force_destroy = true.
+	digest := &ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucket:Bucket::my-bucket",
+				TerraformAddress: "aws_s3_bucket.my_bucket",
+				Attributes: map[string]interface{}{
+					"force_destroy": true,
+					"bucket":        "my-bucket",
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_s3_bucket.my_bucket": "my-bucket",
+	}
+
+	patched, _, err := PatchStateV2(stateData, digest, providers, typeMap, nil, resourceMappings, nil, "")
+	require.NoError(t, err)
+
+	// Verify forceDestroy stays false (not overwritten by digest value true).
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	r := resources[0].(map[string]interface{})
+	inputs := r["inputs"].(map[string]interface{})
+	assert.Equal(t, false, inputs["forceDestroy"], "existing value should not be overwritten")
+}
+
+func TestPatchStateV2_ComputedOnlySkipped(t *testing.T) {
+	t.Parallel()
+
+	// Build provider with "arn" as computed-only (Computed && !Optional && !Required).
+	prov := buildTestProvider(t, "aws_s3_bucket", map[string]testFieldDef{
+		"arn":    {computed: true},
+		"bucket": {optional: true},
+	})
+	providers, typeMap := buildV2Providers(t, prov, map[string]string{
+		"aws_s3_bucket": "aws:s3/bucket:Bucket",
+	})
+
+	// State has arn = nil.
+	stateData := buildTestState("aws:s3/bucket:Bucket", "my-bucket", map[string]any{
+		"bucket": "my-bucket",
+	})
+
+	// Digest has arn = "some-arn".
+	digest := &ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:s3/bucket:Bucket::my-bucket",
+				TerraformAddress: "aws_s3_bucket.my_bucket",
+				Attributes: map[string]interface{}{
+					"arn":    "arn:aws:s3:::my-bucket",
+					"bucket": "my-bucket",
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_s3_bucket.my_bucket": "my-bucket",
+	}
+
+	patched, result, err := PatchStateV2(stateData, digest, providers, typeMap, nil, resourceMappings, nil, "")
+	require.NoError(t, err)
+
+	// arn is computed-only, so it should NOT be patched.
+	assert.Equal(t, 0, result.FieldsFromDigest, "computed-only field should not contribute to FieldsFromDigest")
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	inputs := resources[0].(map[string]interface{})["inputs"].(map[string]interface{})
+	_, hasArn := inputs["arn"]
+	assert.False(t, hasArn, "computed-only field arn should not be patched into inputs")
+}
+
+func TestPatchStateV2_ProviderNotFound(t *testing.T) {
+	t.Parallel()
+
+	// Build a provider for aws_s3_bucket only.
+	prov := buildTestProvider(t, "aws_s3_bucket", map[string]testFieldDef{
+		"bucket": {optional: true},
+	})
+	providers, typeMap := buildV2Providers(t, prov, map[string]string{
+		"aws_s3_bucket": "aws:s3/bucket:Bucket",
+	})
+
+	// State has a resource of type "custom:index:MyComponent" (no provider).
+	stateData := buildTestState("custom:index:MyComponent", "my-component", map[string]any{
+		"name": "my-component",
+	})
+
+	digest := &ModuleMap{}
+
+	patched, result, err := PatchStateV2(stateData, digest, providers, typeMap, nil, nil, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.NoFields, "unknown type should increment NoFields")
+	assert.Equal(t, 0, result.Patched, "unknown type should not be patched")
+
+	// State should still be valid JSON (no crash).
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+}
+
+func TestPatchStateV2_CamelCaseNestedKeys(t *testing.T) {
+	t.Parallel()
+
+	// Build provider with "parameter" as optional field with Pulumi name "parameters".
+	prov := buildTestProvider(t, "aws_rds_cluster_parameter_group", map[string]testFieldDef{
+		"parameter": {optional: true, pulumiName: "parameters"},
+	})
+	providers, typeMap := buildV2Providers(t, prov, map[string]string{
+		"aws_rds_cluster_parameter_group": "aws:rds/clusterParameterGroup:ClusterParameterGroup",
+	})
+
+	// State: empty parameters.
+	stateData := buildTestState("aws:rds/clusterParameterGroup:ClusterParameterGroup", "rds-params", map[string]any{})
+
+	// Digest has parameter with snake_case nested keys.
+	digest := &ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/clusterParameterGroup:ClusterParameterGroup::rds-params",
+				TerraformAddress: "aws_rds_cluster_parameter_group.rds_params",
+				Attributes: map[string]interface{}{
+					"parameter": []interface{}{
+						map[string]interface{}{
+							"apply_method": "immediate",
+							"name":         "rds.force_ssl",
+							"value":        "1",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_rds_cluster_parameter_group.rds_params": "rds-params",
+	}
+
+	patched, result, err := PatchStateV2(stateData, digest, providers, typeMap, nil, resourceMappings, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.FieldsFromDigest)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	inputs := resources[0].(map[string]interface{})["inputs"].(map[string]interface{})
+
+	// Verify nested keys are camelCased.
+	params := inputs["parameters"].([]interface{})
+	require.Len(t, params, 1)
+	param := params[0].(map[string]interface{})
+	assert.Equal(t, "immediate", param["applyMethod"], "apply_method should be camelCased to applyMethod")
+	assert.Equal(t, "rds.force_ssl", param["name"], "name should stay as name (no underscore)")
+	assert.Equal(t, "1", param["value"], "value should stay as value")
+}
+
+func TestPatchStateV2_DeltaUpdatesOnArrayPatch(t *testing.T) {
+	t.Parallel()
+
+	// Build provider with "parameter" optional field with Pulumi name "parameters".
+	prov := buildTestProvider(t, "aws_rds_cluster_parameter_group", map[string]testFieldDef{
+		"parameter": {optional: true, pulumiName: "parameters"},
+	})
+	providers, typeMap := buildV2Providers(t, prov, map[string]string{
+		"aws_rds_cluster_parameter_group": "aws:rds/clusterParameterGroup:ClusterParameterGroup",
+	})
+
+	// Build state with custom output structure including delta.
+	state := map[string]interface{}{
+		"version": 3,
+		"deployment": map[string]interface{}{
+			"resources": []interface{}{
+				map[string]interface{}{
+					"urn":    "urn:pulumi:dev::proj::aws:rds/clusterParameterGroup:ClusterParameterGroup::rds-params",
+					"type":   "aws:rds/clusterParameterGroup:ClusterParameterGroup",
+					"custom": true,
+					"id":     "rds-params",
+					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs": map[string]interface{}{
+						"parameters": nil,
+					},
+					"outputs": map[string]interface{}{
+						"parameters": []interface{}{}, // empty array
+						"__pulumi_raw_state_delta": map[string]interface{}{
+							"obj": map[string]interface{}{
+								"ps": map[string]interface{}{
+									"parameters": map[string]interface{}{
+										"arr": map[string]interface{}{}, // empty — no element deltas
+									},
+								},
+								"renamed": map[string]interface{}{
+									"parameters": "parameter",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	stateData, marshalErr := json.Marshal(state)
+	require.NoError(t, marshalErr)
+
+	// Digest has parameter data.
+	digest := &ModuleMap{
+		RootResources: []ModuleResource{
+			{
+				Mode:             "managed",
+				TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/clusterParameterGroup:ClusterParameterGroup::rds-params",
+				TerraformAddress: "aws_rds_cluster_parameter_group.rds_params",
+				Attributes: map[string]interface{}{
+					"parameter": []interface{}{
+						map[string]interface{}{
+							"apply_method": "immediate",
+							"name":         "rds.force_ssl",
+							"value":        "1",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	resourceMappings := map[string]string{
+		"aws_rds_cluster_parameter_group.rds_params": "rds-params",
+	}
+
+	patched, result, err := PatchStateV2(stateData, digest, providers, typeMap, nil, resourceMappings, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Patched)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
+	outputs := resources[0].(map[string]interface{})["outputs"].(map[string]interface{})
+
+	// Verify parameters output was patched.
+	params := outputs["parameters"].([]interface{})
+	require.Len(t, params, 1)
+	param := params[0].(map[string]interface{})
+	assert.Equal(t, "immediate", param["applyMethod"])
+
+	// Verify delta was updated with element deltas for the new objects.
+	delta := outputs["__pulumi_raw_state_delta"].(map[string]interface{})
+	ps := delta["obj"].(map[string]interface{})["ps"].(map[string]interface{})
+	paramsDelta := ps["parameters"].(map[string]interface{})
+	arrDelta := paramsDelta["arr"].(map[string]interface{})
+
+	el, hasEl := arrDelta["el"]
+	assert.True(t, hasEl, "arr delta should have 'el' with element deltas after patching")
+
+	elMap := el.(map[string]interface{})
+	elem0, has0 := elMap["0"]
+	assert.True(t, has0, "element delta should have entry for index 0")
+
+	elem0Map := elem0.(map[string]interface{})
+	_, hasObj := elem0Map["obj"]
+	assert.True(t, hasObj, "element 0 delta should have 'obj' marker")
+}
