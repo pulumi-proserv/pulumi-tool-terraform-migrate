@@ -32,7 +32,6 @@ import (
 func newPatchStateCmd() *cobra.Command {
 	var statePath string
 	var digestPath string
-	var fieldsPath string
 	var mappingFile string
 	var outPath string
 	var projectDir string
@@ -46,15 +45,8 @@ func newPatchStateCmd() *cobra.Command {
 		Long: `Patch a Pulumi stack state (from pulumi stack export) with field values
 from a TF digest that the cloud API import doesn't return.
 
-There are two modes of operation:
-
-  --tf-dir (recommended): Schema-driven patching. Discovers provider schemas
-  from the Terraform root directory and uses them to determine which fields
-  need patching.
-
-  --fields (deprecated): Uses a hand-maintained fields file. Use --tf-dir instead.
-
-At least one of --tf-dir or --fields must be specified.
+Uses schema-driven patching: discovers provider schemas from the Terraform
+root directory (--tf-dir) and uses them to determine which fields need patching.
 
 For each matching resource, if the state input is nil:
   1. Use the digest value if available (from TF state)
@@ -62,7 +54,7 @@ For each matching resource, if the state input is nil:
 
 After patching, re-import the state with: pulumi stack import --file <output>
 
-Example (schema-driven):
+Example:
 
   pulumi stack export > state.json
   pulumi-terraform-migrate patch-state \
@@ -72,21 +64,8 @@ Example (schema-driven):
     --mapping-file mappings.yaml \
     --out patched-state.json
   pulumi stack import --file patched-state.json
-
-Example (legacy fields file):
-
-  pulumi-terraform-migrate patch-state \
-    --state state.json \
-    --digest tf-digest.json \
-    --fields aws-import-diff-fields.json \
-    --mapping-file mappings.yaml \
-    --out patched-state.json
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if tfDir == "" && fieldsPath == "" {
-				return fmt.Errorf("either --tf-dir or --fields must be specified")
-			}
-
 			// Load state.
 			stateData, err := os.ReadFile(statePath)
 			if err != nil {
@@ -157,51 +136,34 @@ Example (legacy fields file):
 			}
 
 			// Default configDir to tfDir when not explicitly set.
-			if configDir == "" && tfDir != "" {
+			if configDir == "" {
 				configDir = tfDir
 			}
 
-			// Patch.
-			var patched []byte
-			var result *pkg.PatchStateResult
+			// Schema-driven path: load providers from TF dir.
+			ctx := context.Background()
 
-			if fieldsPath != "" {
-				// Deprecated path: use hand-maintained fields file.
-				fmt.Fprintf(os.Stderr, "Warning: --fields is deprecated. Use --tf-dir for schema-driven patching.\n")
-				fieldsFile, err := pkg.LoadFieldsFile(fieldsPath)
-				if err != nil {
-					return err
-				}
-				patched, result, err = pkg.PatchState(stateData, &digest, fieldsFile, moduleMappings, resourceMappings, configSecrets, configDir)
-				if err != nil {
-					return err
-				}
-			} else {
-				// Schema-driven path: load providers from TF dir.
-				ctx := context.Background()
+			providerVersions, err := tofu.GetProviderVersions(ctx, tfDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to extract provider versions: %v\n", err)
+				providerVersions = tofu.TofuVersionOutput{}
+			}
 
-				providerVersions, err := tofu.GetProviderVersions(ctx, tfDir)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to extract provider versions: %v\n", err)
-					providerVersions = tofu.TofuVersionOutput{}
-				}
+			var tfProviders []providermap.TerraformProviderName
+			for name := range providerVersions.ProviderSelections {
+				tfProviders = append(tfProviders, providermap.TerraformProviderName(name))
+			}
 
-				var tfProviders []providermap.TerraformProviderName
-				for name := range providerVersions.ProviderSelections {
-					tfProviders = append(tfProviders, providermap.TerraformProviderName(name))
-				}
+			providers, err := pkg.PulumiProvidersForTerraformProviders(tfProviders, providerVersions.ProviderSelections)
+			if err != nil {
+				return fmt.Errorf("loading providers: %w", err)
+			}
 
-				providers, err := pkg.PulumiProvidersForTerraformProviders(tfProviders, providerVersions.ProviderSelections)
-				if err != nil {
-					return fmt.Errorf("loading providers: %w", err)
-				}
+			typeMap := pkg.BuildPulumiToTFTypeMap(providers)
 
-				typeMap := pkg.BuildPulumiToTFTypeMap(providers)
-
-				patched, result, err = pkg.PatchStateV2(stateData, &digest, providers, typeMap, moduleMappings, resourceMappings, configSecrets, configDir)
-				if err != nil {
-					return err
-				}
+			patched, result, err := pkg.PatchState(stateData, &digest, providers, typeMap, moduleMappings, resourceMappings, configSecrets, configDir)
+			if err != nil {
+				return err
 			}
 
 			// Write output.
@@ -224,7 +186,6 @@ Example (legacy fields file):
 
 	cmd.Flags().StringVar(&statePath, "state", "", "Exported stack state (from pulumi stack export)")
 	cmd.Flags().StringVar(&digestPath, "digest", "", "TF digest (tf-digest.json)")
-	cmd.Flags().StringVar(&fieldsPath, "fields", "", "Fields file (deprecated; use --tf-dir instead)")
 	cmd.Flags().StringVar(&tfDir, "tf-dir", "", "Terraform root directory (for provider schema discovery)")
 	cmd.Flags().StringVar(&mappingFile, "mapping-file", "", "Path to YAML mapping file")
 	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path for patched state")
@@ -234,6 +195,7 @@ Example (legacy fields file):
 
 	cmd.MarkFlagRequired("state")
 	cmd.MarkFlagRequired("digest")
+	cmd.MarkFlagRequired("tf-dir")
 	cmd.MarkFlagRequired("out")
 
 	return cmd
