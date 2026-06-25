@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -77,6 +78,7 @@ var tfToPulumiField = map[string]string{
 	"content":                            "content",
 	"endpoint_auto_confirms":             "endpointAutoConfirms",
 	"force_destroy":                      "forceDestroy",
+	"force_detach_policies":              "forceDetachPolicies",
 	"force_overwrite_replica_secret":     "forceOverwriteReplicaSecret",
 	"master_password":                    "masterPassword",
 	"parameter":                          "parameters",
@@ -540,12 +542,18 @@ func PatchState(
 				}
 			}
 
-			// Patch outputs. Also replace sentinels wrapping null (from cloud import
-			// where Read returns nil for write-only fields).
+			// Patch outputs for simple values only. The bridge sends old
+			// outputs (via gRPC `Olds`) to reconstruct TF state for diffing,
+			// so stale output values cause phantom diffs. However, complex
+			// values (arrays, objects) may have been type-mapped by the bridge
+			// (e.g. TF TypeSet → Pulumi object) and overwriting them with
+			// digest values breaks the delta/Recover contract. Complex output
+			// patching requires conforming to the delta structure — see
+			// docs/patch-state-output-research.md for details.
 			outputIsBadPlain := isSentinel && outputVal != nil && !isSecretSentinel(outputVal)
 			outputIsNullSentinel := isSentinel && isNullSentinel(outputVal)
-			outputIsBadAsset := isAssetSentinel && outputVal != nil && !isAssetOrArchiveSentinel(outputVal)
-			if outputEmpty || outputIsBadPlain || outputIsNullSentinel || outputIsBadAsset {
+			outputStale := patched && !digEmpty && outputVal != nil && !outputEmpty && !equalValues(outputVal, digVal)
+			if outputEmpty || outputIsBadPlain || outputIsNullSentinel || outputStale {
 				var newOutputVal interface{}
 				if !digEmpty {
 					newOutputVal = digVal
@@ -553,14 +561,13 @@ func PatchState(
 					newOutputVal = meta.Default
 				}
 				if newOutputVal != nil {
-					outputsRaw[pulumiField] = newOutputVal
-					// Track patched output fields that need delta updates.
-					// The delta must match the output structure for Recover to work.
-					patchedOutputFields = append(patchedOutputFields, patchedOutputFieldInfo{
-						pulumiField: pulumiField,
-						oldValue:    outputVal,
-						newValue:    newOutputVal,
-					})
+					rawOutput := unwrapSecretSentinel(newOutputVal)
+					// Patch simple values and asset/archive sentinels.
+					// Skip other complex values (arrays, objects) that may
+					// have been type-mapped by the bridge.
+					if isSimpleValue(rawOutput) || isAssetOrArchiveSentinel(rawOutput) {
+						outputsRaw[pulumiField] = rawOutput
+					}
 				}
 			}
 		}
@@ -978,6 +985,98 @@ func hashFileArchive(dirPath string) (string, error) {
 }
 
 // isEmptyValue checks if a value is nil, empty string, or empty array/map.
+// equalValues compares two JSON-deserialized values for equality.
+// JSON numbers from different sources may be float64 vs int, so we
+// normalize numeric comparisons.
+func equalValues(a, b interface{}) bool {
+	return reflect.DeepEqual(a, b)
+}
+
+// conformToDelta transforms a digest value to match the bridge's type mapping
+// by reading the __pulumi_raw_state_delta for the field. When the bridge has
+// flattened a TF TypeSet (array) into a Pulumi object, the delta records "obj"
+// for that field. If we're patching the output with a digest value that's an
+// array (TF representation), we need to flatten it to match the bridge's
+// object representation so Recover can correctly reverse the transformation.
+func conformToDelta(val interface{}, field string, outputsRaw map[string]interface{}) interface{} {
+	deltaRaw, ok := outputsRaw["__pulumi_raw_state_delta"]
+	if !ok {
+		return val
+	}
+	delta, ok := deltaRaw.(map[string]interface{})
+	if !ok {
+		return val
+	}
+	obj, ok := delta["obj"].(map[string]interface{})
+	if !ok {
+		return val
+	}
+	ps, ok := obj["ps"].(map[string]interface{})
+	if !ok {
+		return val
+	}
+	fieldDelta, ok := ps[field].(map[string]interface{})
+	if !ok {
+		return val
+	}
+
+	// Check for "plu" (Pulumi-specific type mapping).
+	// The bridge transforms TF types — e.g. flattening TypeSets to objects.
+	if plu, ok := fieldDelta["plu"].(map[string]interface{}); ok {
+		arr, isArr := val.([]interface{})
+		if isArr && len(arr) == 0 {
+			// Empty array from digest + Pulumi type mapping = keep nil.
+			// Setting an empty array breaks the delta contract.
+			return nil
+		}
+		if inner, ok := plu["i"].(map[string]interface{}); ok {
+			if _, isObj := inner["obj"]; isObj {
+				// Delta says object, but digest value is array — flatten it.
+				if isArr && len(arr) > 0 {
+					if elem, isMap := arr[0].(map[string]interface{}); isMap {
+						result := camelCaseKeys(elem)
+						// Recursively conform nested fields that also have plu deltas.
+						if nestedPs, ok := inner["obj"].(map[string]interface{}); ok {
+							if ps, ok := nestedPs["ps"].(map[string]interface{}); ok {
+								if resultMap, ok := result.(map[string]interface{}); ok {
+									for nestedField, nestedDelta := range ps {
+										if nestedVal, exists := resultMap[nestedField]; exists {
+											// Build a synthetic outputsRaw with just the delta for recursion.
+											synth := map[string]interface{}{
+												"__pulumi_raw_state_delta": map[string]interface{}{
+													"obj": map[string]interface{}{
+														"ps": map[string]interface{}{
+															nestedField: nestedDelta,
+														},
+													},
+												},
+											}
+											resultMap[nestedField] = conformToDelta(nestedVal, nestedField, synth)
+										}
+									}
+								}
+							}
+						}
+						return result
+					}
+				}
+			}
+		}
+	}
+
+	return val
+}
+
+// isSimpleValue returns true for primitive types (bool, number, string, nil).
+// Arrays and objects are not simple — they may have been type-mapped by the bridge.
+func isSimpleValue(v interface{}) bool {
+	switch v.(type) {
+	case nil, bool, string, float64, int:
+		return true
+	}
+	return false
+}
+
 func isEmptyValue(v interface{}) bool {
 	if v == nil || v == "" {
 		return true
@@ -1042,6 +1141,28 @@ func isSecretSentinel(v interface{}) bool {
 	}
 	_, hasSig := m["4dabf18193072939515e22adb298388d"]
 	return hasSig
+}
+
+// unwrapSecretSentinel extracts the raw value from a secret sentinel.
+// If the value is not a sentinel, it is returned unchanged.
+// The "plaintext" field contains a JSON-encoded value (e.g. "\"foo\"" for string "foo").
+func unwrapSecretSentinel(v interface{}) interface{} {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return v
+	}
+	if _, hasSig := m["4dabf18193072939515e22adb298388d"]; !hasSig {
+		return v
+	}
+	plaintext, ok := m["plaintext"].(string)
+	if !ok {
+		return v
+	}
+	var raw interface{}
+	if err := json.Unmarshal([]byte(plaintext), &raw); err != nil {
+		return v
+	}
+	return raw
 }
 
 // isNullSentinel checks if a value is a secret sentinel wrapping null/empty.
@@ -1313,11 +1434,11 @@ func PatchStateFromSchema(
 				}
 			}
 
-			// Patch outputs.
+			// Patch outputs for simple values only. See comment in PatchState.
 			outputIsBadPlain := isSentinel && outputVal != nil && !isSecretSentinel(outputVal)
 			outputIsNullSentinel := isSentinel && isNullSentinel(outputVal)
-			outputIsBadAsset := isAssetSentinel && outputVal != nil && !isAssetOrArchiveSentinel(outputVal)
-			if outputEmpty || outputIsBadPlain || outputIsNullSentinel || outputIsBadAsset {
+			outputStale := patched && !digEmpty && outputVal != nil && !outputEmpty && !equalValues(outputVal, digVal)
+			if outputEmpty || outputIsBadPlain || outputIsNullSentinel || outputStale {
 				var newOutputVal interface{}
 				if !digEmpty {
 					newOutputVal = digVal
@@ -1325,12 +1446,13 @@ func PatchStateFromSchema(
 					newOutputVal = fieldInfo.SchemaDefault
 				}
 				if newOutputVal != nil {
-					outputsRaw[pulumiField] = newOutputVal
-					patchedOutputFields = append(patchedOutputFields, patchedOutputFieldInfo{
-						pulumiField: pulumiField,
-						oldValue:    outputVal,
-						newValue:    newOutputVal,
-					})
+					rawOutput := unwrapSecretSentinel(newOutputVal)
+					// Patch simple values and asset/archive sentinels.
+					// Skip other complex values (arrays, objects) that may
+					// have been type-mapped by the bridge.
+					if isSimpleValue(rawOutput) || isAssetOrArchiveSentinel(rawOutput) {
+						outputsRaw[pulumiField] = rawOutput
+					}
 				}
 			}
 		}
