@@ -39,9 +39,36 @@ import (
 )
 
 // FieldsFile represents the patch-state fields file.
-// Format: { "fields": { "aws:s3/bucket:Bucket": { "forceDestroy": { "default": false } } } }
+// The JSON format is flat: { "fields": { "aws:s3/bucket:Bucket": { "forceDestroy": { "default": false } } } }
+// In Go tests, FieldCategory (which wraps NotRead) is still supported for convenience.
 type FieldsFile struct {
-	Fields map[string]map[string]FieldInfo `json:"fields"`
+	Fields map[string]FieldCategory `json:"fields"`
+}
+
+// FieldCategory groups fields for a resource type.
+// JSON files use the flat format (no "not_read" wrapper); Go test code may use NotRead.
+type FieldCategory struct {
+	NotRead map[string]FieldInfo `json:"not_read,omitempty"`
+}
+
+// UnmarshalJSON supports both flat format (v2) and nested format (v1 with not_read).
+func (fc *FieldCategory) UnmarshalJSON(data []byte) error {
+	// Try v1 (nested): { "not_read": { ... } }
+	type v1Format struct {
+		NotRead map[string]FieldInfo `json:"not_read"`
+	}
+	var v1 v1Format
+	if err := json.Unmarshal(data, &v1); err == nil && len(v1.NotRead) > 0 {
+		fc.NotRead = v1.NotRead
+		return nil
+	}
+	// Try v2 (flat): { "fieldName": { ... } }
+	var v2 map[string]FieldInfo
+	if err := json.Unmarshal(data, &v2); err == nil {
+		fc.NotRead = v2
+		return nil
+	}
+	return fmt.Errorf("cannot parse field category")
 }
 
 // FieldInfo describes a single field to patch.
@@ -543,10 +570,10 @@ func PatchState(
 	// The fields file uses full type keys (aws:secretsmanager/secret:Secret),
 	// but we match state resources by short type (secret:Secret) for convenience.
 	notReadByType := map[string]map[string]fieldMeta{} // type → {pulumiField → meta}
-	for fullType, fieldInfos := range fieldsFile.Fields {
-		if len(fieldInfos) > 0 {
-			fields := make(map[string]fieldMeta, len(fieldInfos))
-			for pulumiField, info := range fieldInfos {
+	for fullType, cat := range fieldsFile.Fields {
+		if len(cat.NotRead) > 0 {
+			fields := make(map[string]fieldMeta, len(cat.NotRead))
+			for pulumiField, info := range cat.NotRead {
 				fields[pulumiField] = fieldMeta{
 					Default:       info.Default,
 					Asset:         info.Asset,
