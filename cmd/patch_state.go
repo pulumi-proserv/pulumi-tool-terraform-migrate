@@ -155,6 +155,9 @@ Example:
 			fmt.Fprintf(os.Stderr, "  Fields from digest: %d\n", result.FieldsFromDigest)
 			fmt.Fprintf(os.Stderr, "  Fields from defaults: %d\n", result.FieldsFromDefaults)
 			fmt.Fprintf(os.Stderr, "  Skipped sensitive:  %d\n", result.SkippedSensitive)
+			if result.SkippedFalsySuppressed > 0 {
+				fmt.Fprintf(os.Stderr, "  Skipped falsy suppressed: %d\n", result.SkippedFalsySuppressed)
+			}
 			fmt.Fprintf(os.Stderr, "  No fields to patch: %d\n", result.NoFields)
 			fmt.Fprintf(os.Stderr, "  Digest mapped:      %d\n", result.DigestMapped)
 			fmt.Fprintf(os.Stderr, "  Delta validated:    %d\n", result.DeltaValidated)

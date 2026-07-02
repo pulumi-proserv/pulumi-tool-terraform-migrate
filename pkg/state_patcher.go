@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -42,7 +43,8 @@ import (
 // The JSON format is flat: { "fields": { "aws:s3/bucket:Bucket": { "forceDestroy": { "default": false } } } }
 // In Go tests, FieldCategory (which wraps NotRead) is still supported for convenience.
 type FieldsFile struct {
-	Fields map[string]FieldCategory `json:"fields"`
+	Fields                  map[string]FieldCategory `json:"fields"`
+	FalsyDefaultSuppression map[string]string        `json:"falsyDefaultSuppression,omitempty"`
 }
 
 // FieldCategory groups fields for a resource type.
@@ -82,15 +84,16 @@ type FieldInfo struct {
 
 // PatchStateResult contains statistics from the patch operation.
 type PatchStateResult struct {
-	Patched          int
-	FieldsFromDigest int
-	FieldsFromDefaults int
-	SkippedSensitive int
-	NoMatch          int
-	NoFields         int
-	DigestMapped     int
-	DeltaValidated   int // resources whose delta passed Recover validation
-	DeltaFailed      int // resources whose delta failed Recover (outputs reverted)
+	Patched                int
+	FieldsFromDigest       int
+	FieldsFromDefaults     int
+	SkippedSensitive       int
+	SkippedFalsySuppressed int
+	NoMatch                int
+	NoFields               int
+	DigestMapped           int
+	DeltaValidated         int // resources whose delta passed Recover validation
+	DeltaFailed            int // resources whose delta failed Recover (outputs reverted)
 }
 
 // patchFieldDescriptor describes a single field to consider for patching.
@@ -153,6 +156,84 @@ func shortPulumiType(fullType string) string {
 		return parts[len(parts)-2] + ":" + parts[len(parts)-1]
 	}
 	return ""
+}
+
+// isFalsyDefault returns true if the default value is falsy, matching
+// the bridge's shouldSuppressTFSchemaDefaultValue behavior (bridge >= v3.127.0).
+// Falsy defaults: false, 0, "". Nil is not falsy (it means no default).
+func isFalsyDefault(v interface{}) bool {
+	switch dv := v.(type) {
+	case bool:
+		return !dv
+	case float64:
+		return dv == 0
+	case json.Number:
+		f, err := dv.Float64()
+		return err == nil && f == 0
+	case string:
+		return dv == ""
+	default:
+		return false
+	}
+}
+
+// semverAtLeast returns true if version >= minimum.
+// Both must be "major.minor.patch" format. Returns false for malformed input.
+func semverAtLeast(version, minimum string) bool {
+	parse := func(s string) (int, int, int, bool) {
+		parts := strings.SplitN(s, ".", 3)
+		if len(parts) != 3 {
+			return 0, 0, 0, false
+		}
+		major, err1 := strconv.Atoi(parts[0])
+		minor, err2 := strconv.Atoi(parts[1])
+		patch, err3 := strconv.Atoi(parts[2])
+		if err1 != nil || err2 != nil || err3 != nil {
+			return 0, 0, 0, false
+		}
+		return major, minor, patch, true
+	}
+
+	vMaj, vMin, vPat, vOk := parse(version)
+	mMaj, mMin, mPat, mOk := parse(minimum)
+	if !vOk || !mOk {
+		return false
+	}
+
+	if vMaj != mMaj {
+		return vMaj > mMaj
+	}
+	if vMin != mMin {
+		return vMin > mMin
+	}
+	return vPat >= mPat
+}
+
+// providerPackage extracts the provider package name from a Pulumi resource type token.
+// "aws:s3/bucket:Bucket" → "aws"
+func providerPackage(resourceType string) string {
+	if idx := strings.IndexByte(resourceType, ':'); idx > 0 {
+		return resourceType[:idx]
+	}
+	return ""
+}
+
+// lookupProviderVersion extracts the provider version for a resource.
+// The resource's "provider" field is a URN with a trailing UUID:
+//
+//	urn:pulumi:stack::project::pulumi:providers:aws::name::UUID
+//
+// We strip the UUID to get the provider URN, then look up the version.
+func lookupProviderVersion(providerRef string, providerVersions map[string]string) string {
+	if providerRef == "" {
+		return ""
+	}
+	// Strip trailing ::UUID
+	if idx := strings.LastIndex(providerRef, "::"); idx > 0 {
+		providerURN := providerRef[:idx]
+		return providerVersions[providerURN]
+	}
+	return providerVersions[providerRef]
 }
 
 // BuildDigestNameMap builds a mapping from Pulumi resource name → ModuleResource
@@ -597,6 +678,28 @@ func PatchState(
 		}
 	}
 
+	// Build provider version map: provider URN → version string.
+	providerVersions := make(map[string]string)
+	for _, raw := range resourcesRaw {
+		rMap, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		resType, _ := rMap["type"].(string)
+		if !strings.HasPrefix(resType, "pulumi:providers:") {
+			continue
+		}
+		urn, _ := rMap["urn"].(string)
+		inputs, _ := rMap["inputs"].(map[string]interface{})
+		if inputs == nil {
+			continue
+		}
+		version, _ := inputs["version"].(string)
+		if version != "" && urn != "" {
+			providerVersions[urn] = version
+		}
+	}
+
 	// Extract resource info from state for matching.
 	stateInfos := make(map[string]stateResourceInfo)
 	for _, raw := range resourcesRaw {
@@ -661,9 +764,26 @@ func PatchState(
 			outputsRaw = map[string]interface{}{}
 		}
 
+		// Determine if this resource's provider suppresses falsy defaults.
+		suppressFalsy := false
+		if fieldsFile.FalsyDefaultSuppression != nil {
+			pkg := providerPackage(resType)
+			if minVersion, ok := fieldsFile.FalsyDefaultSuppression[pkg]; ok {
+				providerRef, _ := rMap["provider"].(string)
+				provVersion := lookupProviderVersion(providerRef, providerVersions)
+				if provVersion != "" && semverAtLeast(provVersion, minVersion) {
+					suppressFalsy = true
+				}
+			}
+		}
+
 		// Build field descriptors from the fields file.
 		var fields []patchFieldDescriptor
 		for pulumiField, meta := range notReadFields {
+			if suppressFalsy && meta.Default != nil && isFalsyDefault(meta.Default) {
+				result.SkippedFalsySuppressed++
+				continue
+			}
 			fields = append(fields, patchFieldDescriptor{
 				PulumiName:    pulumiField,
 				TFName:        pulumiToTFField[pulumiField],
