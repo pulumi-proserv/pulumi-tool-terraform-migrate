@@ -181,6 +181,7 @@ Example:
 	cmd.MarkFlagRequired("state")
 	cmd.MarkFlagRequired("digest")
 	cmd.MarkFlagRequired("fields")
+	cmd.MarkFlagRequired("config-dir")
 	cmd.MarkFlagRequired("out")
 
 	return cmd

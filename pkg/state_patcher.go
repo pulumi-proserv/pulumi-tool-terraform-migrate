@@ -466,6 +466,7 @@ func patchResourceFields(
 					base := strings.TrimSuffix(filepath.Base(pathStr), ".zip")
 					absPath = filepath.Join(configDir, base)
 				}
+				absPath, _ = filepath.Abs(absPath)
 				sentinel, err := buildAssetSentinel(absPath, fd.AssetType)
 				if err != nil && fd.AssetType == "FileArchive" && digResource != nil {
 					if fnName, ok := digResource.Attributes["function_name"].(string); ok && fnName != "" {
