@@ -66,7 +66,7 @@ func TestPatchState_V2FieldsFile_AssetField(t *testing.T) {
 func TestPatchState_V2FieldsFile_LoadFromDisk(t *testing.T) {
 	t.Parallel()
 
-	ff, err := LoadFieldsFile("../aws-import-diff-fields-v2.json")
+	ff, err := LoadFieldsFile("../aws-import-diff-fields.json")
 	require.NoError(t, err)
 
 	// Verify a few known entries parsed correctly.
@@ -302,6 +302,190 @@ func TestPatchState_V2_RecoverFailure_RevertsOutputs(t *testing.T) {
 	assert.True(t, hasDelta, "delta should still be present after revert")
 	// Inputs are also reverted to keep state consistent.
 	assert.Nil(t, inputs["acl"], "acl input should also be reverted")
+}
+
+func TestIsFalsyDefault(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected bool
+	}{
+		{"bool false", false, true},
+		{"bool true", true, false},
+		{"float64 zero", float64(0), true},
+		{"float64 nonzero", float64(30), false},
+		{"json.Number zero", json.Number("0"), true},
+		{"json.Number nonzero", json.Number("1"), false},
+		{"string empty", "", true},
+		{"string nonempty", "private", false},
+		{"nil", nil, false},
+		{"map", map[string]interface{}{}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, isFalsyDefault(tc.value))
+		})
+	}
+}
+
+func TestSemverAtLeast(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		version, minimum string
+		expected         bool
+	}{
+		{"7.27.0", "7.27.0", true},
+		{"7.34.0", "7.27.0", true},
+		{"7.26.0", "7.27.0", false},
+		{"8.0.0", "7.27.0", true},
+		{"6.99.99", "7.27.0", false},
+		{"7.27.1", "7.27.0", true},
+		{"", "7.27.0", false},
+		{"invalid", "7.27.0", false},
+		{"7.27.0", "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.version+"_>=_"+tc.minimum, func(t *testing.T) {
+			assert.Equal(t, tc.expected, semverAtLeast(tc.version, tc.minimum))
+		})
+	}
+}
+
+func TestProviderPackage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		resourceType, expected string
+	}{
+		{"aws:s3/bucket:Bucket", "aws"},
+		{"aws:lambda/function:Function", "aws"},
+		{"gcp:compute/instance:Instance", "gcp"},
+		{"pulumi:pulumi:Stack", "pulumi"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.resourceType, func(t *testing.T) {
+			assert.Equal(t, tc.expected, providerPackage(tc.resourceType))
+		})
+	}
+}
+
+func TestPatchState_FalsyDefaultSuppression(t *testing.T) {
+	t.Parallel()
+
+	ff := fieldsFileFromJSON(t, `{
+		"falsyDefaultSuppression": {
+			"aws": "7.27.0"
+		},
+		"fields": {
+			"aws:s3/bucket:Bucket": {
+				"forceDestroy": { "default": false }
+			},
+			"aws:secretsmanager/secret:Secret": {
+				"recoveryWindowInDays": { "default": 30 },
+				"forceOverwriteReplicaSecret": { "default": false }
+			}
+		}
+	}`)
+
+	stateJSON := `{
+		"version": 3,
+		"deployment": {
+			"resources": [
+				{
+					"urn": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws",
+					"type": "pulumi:providers:aws",
+					"custom": true,
+					"inputs": { "version": "7.34.0" },
+					"outputs": {}
+				},
+				{
+					"urn": "urn:pulumi:test::proj::aws:s3/bucket:Bucket::my-bucket",
+					"type": "aws:s3/bucket:Bucket",
+					"custom": true,
+					"provider": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws::fake-uuid",
+					"inputs": {},
+					"outputs": {}
+				},
+				{
+					"urn": "urn:pulumi:test::proj::aws:secretsmanager/secret:Secret::my-secret",
+					"type": "aws:secretsmanager/secret:Secret",
+					"custom": true,
+					"provider": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws::fake-uuid",
+					"inputs": {},
+					"outputs": {}
+				}
+			]
+		}
+	}`
+
+	digest := &ModuleMap{}
+
+	patched, result, err := PatchState([]byte(stateJSON), digest, ff, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, result.SkippedFalsySuppressed, "should skip 2 falsy defaults")
+	assert.Equal(t, 1, result.FieldsFromDefaults, "should patch 1 non-falsy default")
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	deployment := patchedState["deployment"].(map[string]interface{})
+	resources := deployment["resources"].([]interface{})
+
+	bucket := resources[1].(map[string]interface{})
+	bucketInputs := bucket["inputs"].(map[string]interface{})
+	assert.NotContains(t, bucketInputs, "forceDestroy", "falsy default should be skipped")
+
+	secret := resources[2].(map[string]interface{})
+	secretInputs := secret["inputs"].(map[string]interface{})
+	assert.Contains(t, secretInputs, "recoveryWindowInDays", "non-falsy default should be patched")
+	assert.NotContains(t, secretInputs, "forceOverwriteReplicaSecret", "falsy default should be skipped")
+}
+
+func TestPatchState_FalsyDefaultSuppression_OldProvider(t *testing.T) {
+	t.Parallel()
+
+	ff := fieldsFileFromJSON(t, `{
+		"falsyDefaultSuppression": {
+			"aws": "7.27.0"
+		},
+		"fields": {
+			"aws:s3/bucket:Bucket": {
+				"forceDestroy": { "default": false }
+			}
+		}
+	}`)
+
+	stateJSON := `{
+		"version": 3,
+		"deployment": {
+			"resources": [
+				{
+					"urn": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws",
+					"type": "pulumi:providers:aws",
+					"custom": true,
+					"inputs": { "version": "7.26.0" },
+					"outputs": {}
+				},
+				{
+					"urn": "urn:pulumi:test::proj::aws:s3/bucket:Bucket::my-bucket",
+					"type": "aws:s3/bucket:Bucket",
+					"custom": true,
+					"provider": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws::fake-uuid",
+					"inputs": {},
+					"outputs": {}
+				}
+			]
+		}
+	}`
+
+	digest := &ModuleMap{}
+
+	_, result, err := PatchState([]byte(stateJSON), digest, ff, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, result.SkippedFalsySuppressed)
+	assert.Equal(t, 1, result.FieldsFromDefaults, "falsy default should be patched for old provider")
 }
 
 // Suppress unused import warnings.
