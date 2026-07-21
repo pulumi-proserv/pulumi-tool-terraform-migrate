@@ -488,6 +488,132 @@ func TestPatchState_FalsyDefaultSuppression_OldProvider(t *testing.T) {
 	assert.Equal(t, 1, result.FieldsFromDefaults, "falsy default should be patched for old provider")
 }
 
+func TestPatchState_FalsyDefaultSuppression_DigestOverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	// Field has falsy default (false) but digest has non-falsy value (true).
+	// The falsy default should be suppressed, but the digest value should still be patched.
+	ff := fieldsFileFromJSON(t, `{
+		"falsyDefaultSuppression": {
+			"aws": "7.27.0"
+		},
+		"fields": {
+			"aws:s3/bucket:Bucket": {
+				"forceDestroy": { "default": false }
+			}
+		}
+	}`)
+
+	stateJSON := `{
+		"version": 3,
+		"deployment": {
+			"resources": [
+				{
+					"urn": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws",
+					"type": "pulumi:providers:aws",
+					"custom": true,
+					"inputs": { "version": "7.34.0" },
+					"outputs": {}
+				},
+				{
+					"urn": "urn:pulumi:test::proj::aws:s3/bucket:Bucket::my-bucket",
+					"type": "aws:s3/bucket:Bucket",
+					"custom": true,
+					"provider": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws::fake-uuid",
+					"inputs": {},
+					"outputs": {}
+				}
+			]
+		}
+	}`
+
+	// Digest has force_destroy=true for this bucket.
+	digest := &ModuleMap{
+		RootResources: []ModuleResource{{
+			Mode:             "managed",
+			TranslatedURN:    "urn:pulumi:test::proj::aws:s3/bucket:Bucket::my-bucket",
+			TerraformAddress: "aws_s3_bucket.my_bucket",
+			Attributes:       map[string]interface{}{"force_destroy": true},
+		}},
+	}
+
+	patched, result, err := PatchState([]byte(stateJSON), digest, ff, nil,
+		map[string]string{"aws_s3_bucket.my_bucket": "my-bucket"}, nil, "")
+	require.NoError(t, err)
+
+	// Falsy default suppressed (counter incremented) but digest value patched.
+	assert.Equal(t, 1, result.SkippedFalsySuppressed, "falsy default should be counted as suppressed")
+	assert.Equal(t, 1, result.FieldsFromDigest, "digest value should still be patched")
+	assert.Equal(t, 0, result.FieldsFromDefaults, "falsy default should not be used as fallback")
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	deployment := patchedState["deployment"].(map[string]interface{})
+	resources := deployment["resources"].([]interface{})
+
+	bucket := resources[1].(map[string]interface{})
+	bucketInputs := bucket["inputs"].(map[string]interface{})
+	assert.Equal(t, true, bucketInputs["forceDestroy"], "digest value true should be patched")
+}
+
+func TestPatchState_FalsyDefaultSuppression_NoDigest_NoFallback(t *testing.T) {
+	t.Parallel()
+
+	// Field has falsy default, no digest match. Default should NOT be used as fallback.
+	ff := fieldsFileFromJSON(t, `{
+		"falsyDefaultSuppression": {
+			"aws": "7.27.0"
+		},
+		"fields": {
+			"aws:s3/bucket:Bucket": {
+				"forceDestroy": { "default": false }
+			}
+		}
+	}`)
+
+	stateJSON := `{
+		"version": 3,
+		"deployment": {
+			"resources": [
+				{
+					"urn": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws",
+					"type": "pulumi:providers:aws",
+					"custom": true,
+					"inputs": { "version": "7.34.0" },
+					"outputs": {}
+				},
+				{
+					"urn": "urn:pulumi:test::proj::aws:s3/bucket:Bucket::my-bucket",
+					"type": "aws:s3/bucket:Bucket",
+					"custom": true,
+					"provider": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws::fake-uuid",
+					"inputs": {},
+					"outputs": {}
+				}
+			]
+		}
+	}`
+
+	// No digest match — empty digest.
+	digest := &ModuleMap{}
+
+	patched, result, err := PatchState([]byte(stateJSON), digest, ff, nil, nil, nil, "")
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, result.SkippedFalsySuppressed)
+	assert.Equal(t, 0, result.FieldsFromDefaults, "falsy default should not be used as fallback")
+	assert.Equal(t, 0, result.FieldsFromDigest)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	deployment := patchedState["deployment"].(map[string]interface{})
+	resources := deployment["resources"].([]interface{})
+
+	bucket := resources[1].(map[string]interface{})
+	bucketInputs := bucket["inputs"].(map[string]interface{})
+	assert.NotContains(t, bucketInputs, "forceDestroy", "falsy default should not be patched")
+}
+
 // Suppress unused import warnings.
 var _ = info.FileAsset
 var _ = resource.ZIPArchive

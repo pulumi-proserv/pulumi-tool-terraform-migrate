@@ -100,14 +100,15 @@ type PatchStateResult struct {
 // Both fields-based and schema-based paths build these, then delegate to
 // the shared patchResourceFields function.
 type patchFieldDescriptor struct {
-	PulumiName    string
-	TFName        string
-	Default       interface{} // nil means no default
-	HasDefault    bool
-	AssetType     string // "FileAsset", "FileArchive", or ""
-	AssetKind     *int
-	ArchiveFormat *int
-	HashField     string
+	PulumiName             string
+	TFName                 string
+	Default                interface{} // nil means no default
+	HasDefault             bool
+	SuppressDefaultFallback bool // when true, don't use Default as fallback (digest values still patched)
+	AssetType              string // "FileAsset", "FileArchive", or ""
+	AssetKind              *int
+	ArchiveFormat          *int
+	HashField              string
 }
 
 // tfToPulumiField maps TF snake_case attribute names to Pulumi camelCase field names
@@ -528,7 +529,7 @@ func patchResourceFields(
 				}
 			} else if digSensitive {
 				res.skippedSensitive++
-			} else if fd.HasDefault && fd.Default != nil {
+			} else if fd.HasDefault && !fd.SuppressDefaultFallback && fd.Default != nil {
 				inputsRaw[pulumiField] = fd.Default
 				res.fieldsFromDefaults++
 				res.patched = true
@@ -543,7 +544,7 @@ func patchResourceFields(
 			var newOutputVal interface{}
 			if !digEmpty {
 				newOutputVal = digVal
-			} else if fd.HasDefault && fd.Default != nil {
+			} else if fd.HasDefault && !fd.SuppressDefaultFallback && fd.Default != nil {
 				newOutputVal = fd.Default
 			}
 			if newOutputVal != nil {
@@ -781,19 +782,20 @@ func PatchState(
 		// Build field descriptors from the fields file.
 		var fields []patchFieldDescriptor
 		for pulumiField, meta := range notReadFields {
-			if suppressFalsy && meta.Default != nil && isFalsyDefault(meta.Default) {
+			suppressDefault := suppressFalsy && meta.Default != nil && isFalsyDefault(meta.Default)
+			if suppressDefault {
 				result.SkippedFalsySuppressed++
-				continue
 			}
 			fields = append(fields, patchFieldDescriptor{
-				PulumiName:    pulumiField,
-				TFName:        pulumiToTFField[pulumiField],
-				Default:       meta.Default,
-				HasDefault:    meta.Default != nil,
-				AssetType:     meta.Asset,
-				AssetKind:     meta.AssetKind,
-				ArchiveFormat: meta.ArchiveFormat,
-				HashField:     meta.HashField,
+				PulumiName:              pulumiField,
+				TFName:                  pulumiToTFField[pulumiField],
+				Default:                 meta.Default,
+				HasDefault:              meta.Default != nil,
+				SuppressDefaultFallback: suppressDefault,
+				AssetType:               meta.Asset,
+				AssetKind:               meta.AssetKind,
+				ArchiveFormat:           meta.ArchiveFormat,
+				HashField:               meta.HashField,
 			})
 		}
 
