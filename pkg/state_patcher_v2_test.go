@@ -556,6 +556,73 @@ func TestPatchState_FalsyDefaultSuppression_DigestOverridesDefault(t *testing.T)
 	assert.Equal(t, true, bucketInputs["forceDestroy"], "digest value true should be patched")
 }
 
+func TestPatchState_FalsyDefaultSuppression_DigestMatchesDefault_Skipped(t *testing.T) {
+	t.Parallel()
+
+	// Field has falsy default (false) and digest also has false (TF SDK stored default).
+	// Both should be skipped — patching false would cause the same phantom diff.
+	ff := fieldsFileFromJSON(t, `{
+		"falsyDefaultSuppression": {
+			"aws": "7.27.0"
+		},
+		"fields": {
+			"aws:ec2/securityGroup:SecurityGroup": {
+				"revokeRulesOnDelete": { "default": false }
+			}
+		}
+	}`)
+
+	stateJSON := `{
+		"version": 3,
+		"deployment": {
+			"resources": [
+				{
+					"urn": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws",
+					"type": "pulumi:providers:aws",
+					"custom": true,
+					"inputs": { "version": "7.34.0" },
+					"outputs": {}
+				},
+				{
+					"urn": "urn:pulumi:test::proj::aws:ec2/securityGroup:SecurityGroup::my-sg",
+					"type": "aws:ec2/securityGroup:SecurityGroup",
+					"custom": true,
+					"provider": "urn:pulumi:test::proj::pulumi:providers:aws::my-aws::fake-uuid",
+					"inputs": {},
+					"outputs": {}
+				}
+			]
+		}
+	}`
+
+	// Digest has revoke_rules_on_delete=false (TF SDK default stored in state).
+	digest := &ModuleMap{
+		RootResources: []ModuleResource{{
+			Mode:             "managed",
+			TranslatedURN:    "urn:pulumi:test::proj::aws:ec2/securityGroup:SecurityGroup::my-sg",
+			TerraformAddress: "aws_security_group.my_sg",
+			Attributes:       map[string]interface{}{"revoke_rules_on_delete": false},
+		}},
+	}
+
+	patched, result, err := PatchState([]byte(stateJSON), digest, ff, nil,
+		map[string]string{"aws_security_group.my_sg": "my-sg"}, nil, "")
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, result.SkippedFalsySuppressed)
+	assert.Equal(t, 0, result.FieldsFromDigest, "digest value matching falsy default should be skipped")
+	assert.Equal(t, 0, result.FieldsFromDefaults)
+
+	var patchedState map[string]interface{}
+	require.NoError(t, json.Unmarshal(patched, &patchedState))
+	deployment := patchedState["deployment"].(map[string]interface{})
+	resources := deployment["resources"].([]interface{})
+
+	sg := resources[1].(map[string]interface{})
+	sgInputs := sg["inputs"].(map[string]interface{})
+	assert.NotContains(t, sgInputs, "revokeRulesOnDelete", "falsy digest value should not be patched")
+}
+
 func TestPatchState_FalsyDefaultSuppression_NoDigest_NoFallback(t *testing.T) {
 	t.Parallel()
 

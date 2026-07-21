@@ -510,7 +510,13 @@ func patchResourceFields(
 
 		// Patch inputs.
 		if inputEmpty || inputIsBadPlain || inputIsBadAsset {
-			if !digEmpty {
+			// Skip digest values that match a suppressed falsy default. The TF SDK
+			// stores schema defaults in state, so the digest value for a bridge_default
+			// field is always the default itself. Patching it would cause the same
+			// phantom diff the suppression is meant to prevent.
+			digestIsSuppressedDefault := fd.SuppressDefaultFallback && !digEmpty && fd.Default != nil &&
+				reflect.DeepEqual(digVal, fd.Default)
+			if !digEmpty && !digestIsSuppressedDefault {
 				inputsRaw[pulumiField] = digVal
 				res.fieldsFromDigest++
 				res.patched = true
