@@ -127,6 +127,7 @@ var tfToPulumiField = map[string]string{
 	"force_overwrite_replica_secret":     "forceOverwriteReplicaSecret",
 	"master_password":                    "masterPassword",
 	"parameter":                          "parameters",
+	"path":                               "path",
 	"private_key":                        "privateKey",
 	"publish":                            "publish",
 	"recovery_window_in_days":            "recoveryWindowInDays",

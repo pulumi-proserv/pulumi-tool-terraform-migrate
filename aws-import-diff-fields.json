@@ -81,6 +81,12 @@
       "not_read": {
         "skipDestroy": { "default": false }
       }
+    },
+    "aws:iam/role:Role": {
+      "not_read": {
+        "forceDetachPolicies": { "default": false },
+        "path": { "default": "/" }
+      }
     }
   }
 }
