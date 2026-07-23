@@ -34,6 +34,11 @@ const (
 	RoleSetID      Role = "setIdentifier"
 	RoleStage      Role = "stage"
 	RoleAuthorizer Role = "authorizer"
+
+	RoleScalingTargetID Role = "scalingTargetId"
+	RoleEcsID           Role = "ecsId"
+	RoleTransferID      Role = "transferId"
+	RoleLayerArn        Role = "layerArn"
 )
 
 // IDSpec describes how to compose an import ID for a Pulumi type. Classic is
