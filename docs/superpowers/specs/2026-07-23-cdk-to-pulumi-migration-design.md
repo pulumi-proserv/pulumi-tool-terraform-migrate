@@ -74,18 +74,20 @@ Three artifacts, each paralleling an existing Terraform one, sharing as much as 
 
 | # | New artifact | Parallels | Reuse strategy |
 |---|---|---|---|
-| 1 | **CFN command group** in `pulumi-tool-terraform-migrate` (`cfn-digest`, `import-id-resolve`) | `tf-digest`, `import-id-match` | New `cmd/` files + new `pkg/cfn/`; reuses `patch-state`, `set-secrets`, `aws-import-diff-fields.json`, provider/URN plumbing unchanged |
+| 1 | **CFN subcommands** in `pulumi-tool-terraform-migrate` (`digest cfn`, `resolve cfn`) | `digest tf`, `resolve tf` | New `cmd/` files + new `pkg/cfn/` + shared `pkg/importid/`; reuses `patch-state`, `set-secrets`, `aws-import-diff-fields.json`, provider/URN plumbing unchanged |
 | 2 | **`cdk-cloudformation-workspace-migration`** skill | `pulumi-terraform-workspace-migration` | Phases 2, 3, 5, 6 transfer almost verbatim; Phases 0, 1, 4 are CFN-specific |
 | 3 | **`cdk-construct-to-component`** skill | `pulumi-terraform-module-to-component` | ~80% reuse; new part is CDK construct → component interface + CDK-name-to-config handling |
 
 ## Component 1 — The tool
 
-### `cfn-digest` (the `tf-digest` analog)
+> **Revision (2026-07-23):** The CLI is organized as **subcommands** — `digest tf|cfn` and `resolve tf|cfn` — not flat `cfn-digest`/`import-id-resolve` commands. Existing `tf-digest` and `import-id-match` remain as **hidden aliases** so the shipped TF skill keeps working. The import-ID translate logic is a **shared `pkg/importid` core** keyed on the Pulumi type token (roles + per-source attribute adapters) serving both TF and CFN. Crucially, `digest cfn` stores resolved *attributes* (plus pre-resolved IDs for the 4 AWS-lookup types); `resolve cfn` composes the final import ID from those attributes via the shared core — mirroring the TF `tf-digest`→`import-id-match` split exactly. See the implementation plan `docs/superpowers/plans/2026-07-23-cfn-migration-tool.md` for the authoritative command tree and signatures.
+
+### `digest cfn` (the `digest tf` / `tf-digest` analog)
 
 Produces the agent-safe JSON the skill reads instead of the raw stack.
 
 ```
-pulumi plugin run terraform-migrate -- cfn-digest \
+pulumi plugin run terraform-migrate -- digest cfn \
   --stack-name face-finder-service-dev \
   --region us-east-1 \
   --synth-template cdk.out/FFSStack.template.json \   # optional cross-check
@@ -94,13 +96,16 @@ pulumi plugin run terraform-migrate -- cfn-digest \
 ```
 
 Per resource, emits:
-- logical ID, CFN resource type
-- **resolved import ID** — NOT raw `PhysicalResourceId`. Resolved per-type (IAM
-  Policy inline names via `list-role-policies`, etc.). This is the crux the field
-  report flagged: `PhysicalResourceId` is frequently not the import ID.
-- resolved attributes — from the deployed template's resolved properties + targeted
-  `aws <service> describe-*` calls when the template used intrinsics
-  (`Fn::GetAtt`, `Ref`)
+- logical ID, CFN resource type, Pulumi type hint
+- resolved attributes — from the deployed template's resolved properties + Cloud
+  Control / `describe-*` calls when the template used intrinsics (`Fn::GetAtt`,
+  `Ref`, `Fn::ImportValue`, `Fn::Join`). `resolve cfn` composes the final import
+  ID from these.
+- **pre-resolved import ID** for the 4 AWS-lookup-only types (IAM Policy ARN via
+  `ListPolicies`, SG rule `sgr-*` via `DescribeSecurityGroupRules`, EIP allocation
+  ID, VPC gateway attachment) — because these need a live AWS call, they are
+  resolved here where AWS access lives, not in `resolve cfn`. This is the crux the
+  field report flagged: `PhysicalResourceId` is frequently not the import ID.
 - a clean derived name (e.g. full API path names)
 - **`cdkHashedName`** flag — detects construct-hash suffixes (e.g.
   `...DefaultPolicyDFEB0894`, `FFSStacktokenauthorizer97C609E5`) → skill routes to
@@ -117,10 +122,10 @@ assets / large attributes may embed secrets in non-sensitive string values;
 **Source of truth:** deployed stack. `--synth-template` is an optional cross-check
 only.
 
-### `import-id-resolve` (the `import-id-match` analog + ported resolver table)
+### `resolve cfn` (the `resolve tf` / `import-id-match` analog, shared translate core)
 
 ```
-pulumi plugin run terraform-migrate -- import-id-resolve \
+pulumi plugin run terraform-migrate -- resolve cfn \
   --digest /tmp/ffs-cfn-digest.json \
   --import-file imports.json \
   --mapping-file mappings.yaml \
@@ -128,20 +133,24 @@ pulumi plugin run terraform-migrate -- import-id-resolve \
   --out imports-ready.json
 ```
 
-- Fills placeholder IDs from the digest using logical-ID → resource mappings.
-- Ports `importIdentityResolvers` from the F# tool into a Go `switch` on CFN type
-  (same shape as the existing `TranslateImportIDs`), covering:
-  - **classic composite IDs** everywhere (Lambda Permission `FunctionName/Id`,
-    RolePolicyAttachment `role/policy-arn`, SG rules, ECS Service `cluster/name`,
-    etc.)
+- Matches each import-skeleton entry to a digest resource by CFN logical ID
+  (entry name suffix or explicit mapping), then fills its import ID.
+- Composes the ID via the **shared `pkg/importid` core** — one table keyed on the
+  Pulumi type token (`aws:lambda/permission:Permission` → `function/statement`),
+  the same table `resolve tf` uses. The CFN attribute adapter supplies role values
+  from CFN property names (`FunctionName`, `Id`, …); the TF adapter supplies them
+  from TF attribute names. Covers:
+  - **classic composite IDs** everywhere (Lambda Permission `FunctionName/Id`, ECS
+    Service `cluster/name`, Route53, autoscaling reorder, etc.)
   - **aws-native IDs** for the bounded API Gateway family, including the Cloud
     Control identifier-order quirks: `Resource`/`Method`/`Stage` use `RestApiId|...`
     first; **`Deployment` is reversed** (`DeploymentId|RestApiId`).
-  - **PhysicalResourceId ≠ import ID lookups**: IAM policy ARN (`ListPolicies`), SG
-    rule IDs (`DescribeSecurityGroupRules`), EIP allocation IDs, VPC gateway
-    attachment (`igw-x:vpc-x`).
-- **Extension mechanism (documented in the skill):** one keyed `case` per new
-  resource type. When an import fails with "resource does not exist," treat it as
+  - **pre-resolved lookup IDs** (IAM policy ARN, SG rule IDs, EIP allocation IDs,
+    VPC gateway attachment) — these came from `digest cfn` (they need live AWS);
+    `resolve cfn` uses the stored value.
+- **Extension mechanism (documented in the skill):** one keyed entry in the shared
+  spec table per new resource type (+ a role→attribute mapping in each source
+  adapter). When an import fails with "resource does not exist," treat it as
   "check the identifier format/order," not "resource missing."
 
 ### Reused unchanged
