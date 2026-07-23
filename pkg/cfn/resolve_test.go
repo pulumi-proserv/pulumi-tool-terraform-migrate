@@ -1,4 +1,17 @@
-// pkg/cfn/resolve_test.go
+// Copyright 2016-2025, Pulumi Corporation.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cfn
 
 import (
@@ -26,7 +39,7 @@ func TestFillFromDigest(t *testing.T) {
 	}}
 	res := FillFromDigest(digest, importFile, nil, "native")
 	require.Equal(t, 3, res.Filled)
-	require.Equal(t, "ffs-dev-api/AllowApiGw", importFile.Resources[0].ID) // composed
+	require.Equal(t, "ffs-dev-api/AllowApiGw", importFile.Resources[0].ID)  // composed
 	require.Equal(t, "arn:aws:iam::1:policy/p", importFile.Resources[1].ID) // pre-resolved lookup
 	require.Equal(t, "dep|abc", importFile.Resources[2].ID)                 // native reversed
 }
