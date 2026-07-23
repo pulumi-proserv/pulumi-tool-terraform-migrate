@@ -38,6 +38,14 @@ var cfnRoleNames = map[importid.Role]string{
 	importid.RoleEcsID:           "Id",
 	importid.RoleTransferID:      "Id",
 	importid.RoleLayerArn:        "LayerVersionArn",
+
+	importid.RoleArn:          "Arn",
+	importid.RoleCidr:         "DestinationCidrBlock",
+	importid.RoleDevice:       "Device",
+	importid.RoleVolume:       "VolumeId",
+	importid.RoleInstance:     "InstanceId",
+	importid.RoleLogGroupName: "LogGroupName",
+	importid.RoleAlarmName:    "AlarmName",
 }
 
 // CfnGetter returns a role lookup over resolved CFN attributes.

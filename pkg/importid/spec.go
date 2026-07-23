@@ -39,6 +39,14 @@ const (
 	RoleEcsID           Role = "ecsId"
 	RoleTransferID      Role = "transferId"
 	RoleLayerArn        Role = "layerArn"
+
+	RoleArn          Role = "arn"
+	RoleCidr         Role = "cidr"
+	RoleDevice       Role = "device"
+	RoleVolume       Role = "volume"
+	RoleInstance     Role = "instance"
+	RoleLogGroupName Role = "logGroupName"
+	RoleAlarmName    Role = "alarmName"
 )
 
 // IDSpec describes how to compose an import ID for a Pulumi type. Classic is
@@ -75,7 +83,13 @@ var Specs = map[string]IDSpec{
 	"aws:ecs/service:Service":                                        {Custom: composeEcsService},
 	"aws:transfer/server:Server":                                     {Custom: composeTransferServer},
 	"aws:lambda/layerVersionPermission:LayerVersionPermission":       {Custom: composeLayerVersionPermission},
-	"aws:ec2/route:Route":                                            {Classic: []Role{RoleRouteTbl, RoleID}, ClassicDelim: "_"}, // Id role carries CidrBlock for Route (see adapter)
+	"aws:ec2/route:Route":                                            {Classic: []Role{RoleRouteTbl, RoleCidr}, ClassicDelim: "_"},
+
+	"aws:cloudwatch/logGroup:LogGroup":          {Classic: []Role{RoleLogGroupName}, ClassicDelim: ""},
+	"aws:cloudwatch/metricAlarm:MetricAlarm":    {Classic: []Role{RoleAlarmName}, ClassicDelim: ""},
+	"aws:cloudwatch/eventRule:EventRule":        {Classic: []Role{RoleName}, ClassicDelim: ""}, // default event bus; a custom bus needs busName/ruleName (manual)
+	"aws:cloudwatch/eventBus:EventBus":          {Classic: []Role{RoleName}, ClassicDelim: ""},
+	"aws:ec2/volumeAttachment:VolumeAttachment": {Classic: []Role{RoleDevice, RoleVolume, RoleInstance}, ClassicDelim: ":"},
 }
 
 // Compose builds the import ID for a Pulumi type. Returns handled=false when the
