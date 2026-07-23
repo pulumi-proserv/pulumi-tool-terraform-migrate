@@ -90,10 +90,17 @@ Produces the agent-safe JSON the skill reads instead of the raw stack.
 pulumi plugin run terraform-migrate -- digest cfn \
   --stack-name face-finder-service-dev \
   --region us-east-1 \
-  --synth-template cdk.out/FFSStack.template.json \   # optional cross-check
-  --out /tmp/ffs-cfn-digest.json \
-  --pulumi-stack dev --pulumi-project ffs --project-dir ./pulumi
+  --out /tmp/ffs-cfn-digest.json
 ```
+
+> **Implemented scope (v1):** `digest cfn` ships with `--stack-name --region --out`
+> only. The `--synth-template`, `--pulumi-stack`, `--pulumi-project`, and
+> `--project-dir` flags shown in earlier drafts are **deferred**: the digest reads
+> the *deployed* template live via `GetTemplate` (so a synth cross-check is
+> optional and not wired), and NoEcho/secret-setting into stack config is a
+> documented follow-up (the field report found CDK secrets were referenced by
+> name, so no inline-secret extraction was needed for v1). When secret-setting is
+> added, the `--pulumi-*`/`--project-dir` flags return, matching `digest tf`.
 
 Per resource, emits:
 - logical ID, CFN resource type, Pulumi type hint
