@@ -1,0 +1,102 @@
+package importid
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Role is a source-agnostic logical field name. Per-source adapters map roles
+// to their own attribute names (TF: function_name; CFN: FunctionName).
+type Role string
+
+const (
+	RoleFunction   Role = "function"
+	RoleStatement  Role = "statement"
+	RoleRestApi    Role = "restApi"
+	RoleID         Role = "id"
+	RoleResource   Role = "resource"
+	RoleHTTP       Role = "httpMethod"
+	RoleUsagePlan  Role = "usagePlan"
+	RoleKey        Role = "key"
+	RoleUserPool   Role = "userPool"
+	RoleSubnet     Role = "subnet"
+	RoleRouteTbl   Role = "routeTable"
+	RoleServer     Role = "server"
+	RoleUser       Role = "user"
+	RoleQualifier  Role = "qualifier"
+	RoleListener   Role = "listener"
+	RoleCert       Role = "certificate"
+	RoleBucket     Role = "bucket"
+	RoleQueue      Role = "queue"
+	RoleHostZone   Role = "hostedZone"
+	RoleName       Role = "name"
+	RoleType       Role = "recordType"
+	RoleSetID      Role = "setIdentifier"
+	RoleStage      Role = "stage"
+	RoleAuthorizer Role = "authorizer"
+)
+
+// IDSpec describes how to compose an import ID for a Pulumi type. Classic is
+// the aws-classic format; Native (optional) is the aws-native format for the
+// API Gateway family. Custom overrides both for reorder/split cases.
+type IDSpec struct {
+	Classic      []Role
+	ClassicDelim string
+	Native       []Role
+	NativeDelim  string
+	Custom       func(get func(Role) string, provider string) (string, error)
+}
+
+// Specs is keyed by Pulumi type token. Only pure-composition types appear here;
+// AWS-lookup types are pre-resolved in the digest step.
+var Specs = map[string]IDSpec{
+	"aws:lambda/permission:Permission":                               {Classic: []Role{RoleFunction, RoleStatement}, ClassicDelim: "/"},
+	"aws:apigateway/resource:Resource":                               {Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleID}, NativeDelim: "|"},
+	"aws:apigateway/deployment:Deployment":                           {Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/", Native: []Role{RoleID, RoleRestApi}, NativeDelim: "|"}, // native reversed
+	"aws:apigateway/method:Method":                                   {Classic: []Role{RoleRestApi, RoleResource, RoleHTTP}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleResource, RoleHTTP}, NativeDelim: "|"},
+	"aws:apigateway/usagePlanKey:UsagePlanKey":                       {Classic: []Role{RoleUsagePlan, RoleKey}, ClassicDelim: "/", Native: []Role{RoleUsagePlan, RoleKey}, NativeDelim: "|"},
+	"aws:apigateway/stage:Stage":                                     {Native: []Role{RoleRestApi, RoleStage}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleStage}, ClassicDelim: "/"},
+	"aws:apigateway/authorizer:Authorizer":                           {Native: []Role{RoleRestApi, RoleAuthorizer}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleAuthorizer}, ClassicDelim: "/"},
+	"aws:cognito/userPoolClient:UserPoolClient":                      {Classic: []Role{RoleUserPool, RoleID}, ClassicDelim: "/"},
+	"aws:ec2/routeTableAssociation:RouteTableAssociation":            {Classic: []Role{RoleSubnet, RoleRouteTbl}, ClassicDelim: "/"},
+	"aws:transfer/user:User":                                         {Classic: []Role{RoleServer, RoleUser}, ClassicDelim: "/"},
+	"aws:lambda/functionEventInvokeConfig:FunctionEventInvokeConfig": {Classic: []Role{RoleFunction, RoleQualifier}, ClassicDelim: ":"},
+	"aws:lb/listenerCertificate:ListenerCertificate":                 {Classic: []Role{RoleListener, RoleCert}, ClassicDelim: "_"},
+	"aws:s3/bucketPolicy:BucketPolicy":                               {Classic: []Role{RoleBucket}, ClassicDelim: ""},
+	"aws:sqs/queuePolicy:QueuePolicy":                                {Classic: []Role{RoleQueue}, ClassicDelim: ""},
+	"aws:route53/record:Record":                                      {Custom: composeRoute53},
+	"aws:appautoscaling/policy:Policy":                               {Custom: composeScalingPolicy},
+	"aws:appautoscaling/target:Target":                               {Custom: composeScalableTarget},
+	"aws:ecs/service:Service":                                        {Custom: composeEcsService},
+	"aws:transfer/server:Server":                                     {Custom: composeTransferServer},
+	"aws:lambda/layerVersionPermission:LayerVersionPermission":       {Custom: composeLayerVersionPermission},
+	"aws:ec2/route:Route":                                            {Classic: []Role{RoleRouteTbl, RoleID}, ClassicDelim: "_"}, // Id role carries CidrBlock for Route (see adapter)
+}
+
+// Compose builds the import ID for a Pulumi type. Returns handled=false when the
+// type is not in Specs (caller uses a pre-resolved ID or physical id).
+func Compose(pulumiType, provider string, get func(Role) string) (id string, handled bool, err error) {
+	spec, ok := Specs[pulumiType]
+	if !ok {
+		return "", false, nil
+	}
+	if spec.Custom != nil {
+		id, err = spec.Custom(get, provider)
+		return id, true, err
+	}
+	parts := spec.Classic
+	delim := spec.ClassicDelim
+	if provider == "native" && spec.Native != nil {
+		parts = spec.Native
+		delim = spec.NativeDelim
+	}
+	vals := make([]string, 0, len(parts))
+	for _, r := range parts {
+		v := get(r)
+		if v == "" {
+			return "", true, fmt.Errorf("%s: missing role %q", pulumiType, r)
+		}
+		vals = append(vals, v)
+	}
+	return strings.Join(vals, delim), true, nil
+}
