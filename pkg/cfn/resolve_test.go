@@ -30,3 +30,70 @@ func TestFillFromDigest(t *testing.T) {
 	require.Equal(t, "arn:aws:iam::1:policy/p", importFile.Resources[1].ID) // pre-resolved lookup
 	require.Equal(t, "dep|abc", importFile.Resources[2].ID)                 // native reversed
 }
+
+func TestFillFromDigest_ComposeErrorNotFilled(t *testing.T) {
+	t.Parallel()
+	digest := &StackDigest{Resources: []CfnResource{
+		// Missing "Id" (RoleStatement), which is required for Permission composition.
+		{LogicalID: "ApiPermission", CfnType: "AWS::Lambda::Permission",
+			PulumiType: "aws:lambda/permission:Permission",
+			PhysicalID: "some-fallback-physical-id",
+			Attributes: map[string]interface{}{"FunctionName": "ffs-dev-api"}},
+	}}
+	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
+		{Type: "aws:lambda/permission:Permission", Name: "ffs-ApiPermission"},
+	}}
+	res := FillFromDigest(digest, importFile, nil, "native")
+	require.Equal(t, 0, res.Filled)
+	require.Equal(t, 1, res.Unmatched)
+	require.Empty(t, importFile.Resources[0].ID, "must not fabricate an ID from PhysicalID when compose fails")
+	require.Len(t, res.Warnings, 1)
+	require.Contains(t, res.Warnings[0], "compose failed for ffs-ApiPermission")
+}
+
+func TestFillFromDigest_UnresolvedIntrinsicNotFilled(t *testing.T) {
+	t.Parallel()
+	digest := &StackDigest{Resources: []CfnResource{
+		{LogicalID: "ApiPermission", CfnType: "AWS::Lambda::Permission",
+			PulumiType: "aws:lambda/permission:Permission",
+			Attributes: map[string]interface{}{
+				"FunctionName": "<unresolved-intrinsic:Fn::Sub>",
+				"Id":           "AllowApiGw",
+			}},
+	}}
+	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
+		{Type: "aws:lambda/permission:Permission", Name: "ffs-ApiPermission"},
+	}}
+	res := FillFromDigest(digest, importFile, nil, "native")
+	require.Equal(t, 0, res.Filled)
+	require.Equal(t, 1, res.Unmatched)
+	require.Empty(t, importFile.Resources[0].ID)
+	require.Len(t, res.Warnings, 1)
+	require.Contains(t, res.Warnings[0], "unresolved intrinsic in import ID for ffs-ApiPermission")
+}
+
+func TestFillFromDigest_ComponentIncrementsSkipped(t *testing.T) {
+	t.Parallel()
+	digest := &StackDigest{Resources: []CfnResource{}}
+	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
+		{Name: "caas_rds", Component: true},
+	}}
+	res := FillFromDigest(digest, importFile, nil, "native")
+	require.Equal(t, 1, res.Skipped)
+	require.Equal(t, 0, res.Filled)
+	require.Equal(t, 0, res.Unmatched)
+}
+
+func TestFillFromDigest_PrePopulatedIDNotClobbered(t *testing.T) {
+	t.Parallel()
+	digest := &StackDigest{Resources: []CfnResource{
+		{LogicalID: "TaskPolicy", CfnType: "AWS::IAM::Policy",
+			PulumiType: "aws:iam/policy:Policy", ImportID: "arn:aws:iam::1:policy/should-not-be-used"},
+	}}
+	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
+		{Type: "aws:iam/policy:Policy", Name: "ffs-TaskPolicy", ID: "arn:aws:iam::1:policy/already-set"},
+	}}
+	res := FillFromDigest(digest, importFile, nil, "native")
+	require.Equal(t, 0, res.Filled)
+	require.Equal(t, "arn:aws:iam::1:policy/already-set", importFile.Resources[0].ID)
+}

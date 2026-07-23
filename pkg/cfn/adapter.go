@@ -39,7 +39,6 @@ var cfnRoleNames = map[importid.Role]string{
 	importid.RoleTransferID:      "Id",
 	importid.RoleLayerArn:        "LayerVersionArn",
 
-	importid.RoleArn:          "Arn",
 	importid.RoleCidr:         "DestinationCidrBlock",
 	importid.RoleDevice:       "Device",
 	importid.RoleVolume:       "VolumeId",

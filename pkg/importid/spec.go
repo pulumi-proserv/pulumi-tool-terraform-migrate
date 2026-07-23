@@ -40,7 +40,6 @@ const (
 	RoleTransferID      Role = "transferId"
 	RoleLayerArn        Role = "layerArn"
 
-	RoleArn          Role = "arn"
 	RoleCidr         Role = "cidr"
 	RoleDevice       Role = "device"
 	RoleVolume       Role = "volume"

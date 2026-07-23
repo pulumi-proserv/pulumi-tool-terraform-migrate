@@ -81,5 +81,12 @@ func resolveValue(ctx context.Context, v interface{}, resources, resourceTypes, 
 		}
 		return strings.Join(parts, delim), nil
 	}
+	if m, ok := v.(map[string]interface{}); ok && len(m) == 1 {
+		for k := range m {
+			if strings.HasPrefix(k, "Fn::") || k == "Ref" {
+				return fmt.Sprintf("<unresolved-intrinsic:%s>", k), nil
+			}
+		}
+	}
 	return v, nil
 }

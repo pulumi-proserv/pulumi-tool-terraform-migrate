@@ -105,3 +105,27 @@ func TestResolveProperties_UnresolvedRefPassthrough(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "AWS::Region", got["Region"])
 }
+
+func TestResolveProperties_UnresolvedIntrinsicSentinel(t *testing.T) {
+	t.Parallel()
+	props := map[string]interface{}{
+		"Sub":    map[string]interface{}{"Fn::Sub": "${AWS::StackName}-thing"},
+		"Select": map[string]interface{}{"Fn::Select": []interface{}{0, []interface{}{"a", "b"}}},
+	}
+	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{})
+	require.NoError(t, err)
+	require.Equal(t, "<unresolved-intrinsic:Fn::Sub>", got["Sub"])
+	require.Equal(t, "<unresolved-intrinsic:Fn::Select>", got["Select"])
+}
+
+func TestResolveProperties_NestedPropertyObjectPassthrough(t *testing.T) {
+	t.Parallel()
+	// A multi-key map is a legitimate nested property object, not an intrinsic,
+	// and must pass through unchanged.
+	props := map[string]interface{}{
+		"Tag": map[string]interface{}{"Key": "Name", "Value": "prod"},
+	}
+	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{})
+	require.NoError(t, err)
+	require.Equal(t, map[string]interface{}{"Key": "Name", "Value": "prod"}, got["Tag"])
+}

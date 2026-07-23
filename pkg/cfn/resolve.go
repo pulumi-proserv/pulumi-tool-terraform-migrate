@@ -2,6 +2,7 @@
 package cfn
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg"
@@ -27,7 +28,11 @@ func FillFromDigest(digest *StackDigest, importFile *pkg.ImportFile, mappings ma
 	for i := range importFile.Resources {
 		entry := &importFile.Resources[i]
 		if entry.Component {
+			res.Skipped++
 			continue
+		}
+		if entry.ID != "" && entry.ID != "<PLACEHOLDER>" {
+			continue // already filled, don't clobber a pre-populated ID
 		}
 		logical := suffix(entry.Name)
 		if m, ok := mappings[entry.Name]; ok {
@@ -39,12 +44,28 @@ func FillFromDigest(digest *StackDigest, importFile *pkg.ImportFile, mappings ma
 			res.Warnings = append(res.Warnings, "no digest match for "+entry.Name)
 			continue
 		}
-		if id, handled, err := importid.Compose(entry.Type, provider, CfnGetter(r.Attributes)); err == nil && handled {
+		id, handled, err := importid.Compose(entry.Type, provider, CfnGetter(r.Attributes))
+		if handled && err != nil {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("compose failed for %s (%s): %v", entry.Name, entry.Type, err))
+			res.Unmatched++
+			continue
+		} else if handled {
 			entry.ID = id
 		} else if r.ImportID != "" {
 			entry.ID = r.ImportID
 		} else {
 			entry.ID = r.PhysicalID
+		}
+		if entry.ID == "" {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("empty import ID for %s", entry.Name))
+			res.Unmatched++
+			continue
+		}
+		if strings.Contains(entry.ID, "<unresolved-intrinsic:") {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("unresolved intrinsic in import ID for %s: %s", entry.Name, entry.ID))
+			res.Unmatched++
+			entry.ID = ""
+			continue
 		}
 		res.Filled++
 	}
