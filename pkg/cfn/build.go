@@ -55,12 +55,13 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 
 	digest := &StackDigest{StackName: stackName, Region: region}
 	for _, r := range stackResources {
-		res := CfnResource{LogicalID: r.LogicalID, CfnType: r.CfnType, PhysicalID: r.PhysicalID, PulumiType: PulumiType(r.CfnType)}
+		res := CfnResource{LogicalID: r.LogicalID, CfnType: r.CfnType, PhysicalID: r.PhysicalID}
 		if shouldSkip(r.CfnType) {
 			res.Skipped, res.SkipReason = true, "CFN-only/CDK resource"
 			digest.Resources = append(digest.Resources, res)
 			continue
 		}
+		res.PulumiType = PulumiType(r.CfnType)
 		res.DerivedName, res.CdkHashedName, res.ServerAssigned = ClassifyName(r.LogicalID, r.PhysicalID, r.CfnType)
 
 		attrs := map[string]interface{}{"Id": r.PhysicalID}

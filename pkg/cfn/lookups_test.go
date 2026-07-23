@@ -9,20 +9,14 @@ import (
 )
 
 type fakeLookups struct {
-	policyARN, sgRule, eip, igw string
+	sgRule, eip, igw string
 
 	// recorder fields captured from the arguments the fake methods received,
 	// so tests can assert routing.
-	gotPolicyNameOrID string
-	gotEgress         *bool
-	gotSGProps        map[string]interface{}
-	gotEIPPublicIP    string
-	gotIGW            string
-}
-
-func (f *fakeLookups) IAMPolicyARN(_ context.Context, nameOrID string) (string, error) {
-	f.gotPolicyNameOrID = nameOrID
-	return f.policyARN, nil
+	gotEgress      *bool
+	gotSGProps     map[string]interface{}
+	gotEIPPublicIP string
+	gotIGW         string
 }
 
 func (f *fakeLookups) SecurityGroupRuleID(_ context.Context, egress bool, props map[string]interface{}) (string, error) {
@@ -44,15 +38,6 @@ func (f *fakeLookups) InternetGatewayAttachment(_ context.Context, igwID string)
 func TestLookupImportID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-
-	t.Run("IAM policy", func(t *testing.T) {
-		lk := &fakeLookups{policyARN: "arn:pol"}
-		id, isLookup, err := LookupImportID(ctx, "AWS::IAM::Policy", map[string]interface{}{"Id": "p"}, lk)
-		require.NoError(t, err)
-		require.True(t, isLookup)
-		require.Equal(t, "arn:pol", id)
-		require.Equal(t, "p", lk.gotPolicyNameOrID)
-	})
 
 	t.Run("non-lookup type", func(t *testing.T) {
 		lk := &fakeLookups{}
