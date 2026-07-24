@@ -83,7 +83,7 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 
 		attrs := map[string]interface{}{"Id": r.PhysicalID}
 		if t, ok := tmpl.Resources[r.LogicalID]; ok && t.Properties != nil {
-			resolved, err := ResolveProperties(ctx, t.Properties, resources, resourceTypes, exports, cc)
+			resolved, err := ResolveProperties(ctx, t.Properties, resources, resourceTypes, exports, cc, region)
 			if err != nil {
 				return nil, fmt.Errorf("resolve %s: %w", r.LogicalID, err)
 			}

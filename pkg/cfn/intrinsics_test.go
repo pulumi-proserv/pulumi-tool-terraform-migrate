@@ -45,7 +45,7 @@ func TestResolveProperties(t *testing.T) {
 		},
 		"Literal": "unchanged",
 	}
-	got, err := ResolveProperties(context.Background(), props, resources, resourceTypes, exports, cc)
+	got, err := ResolveProperties(context.Background(), props, resources, resourceTypes, exports, cc, "")
 	require.NoError(t, err)
 	require.Equal(t, "abc123", got["RestApiId"])
 	require.Equal(t, "vpc-999", got["Vpc"])
@@ -69,7 +69,7 @@ func TestResolveProperties_JoinWithNestedRef(t *testing.T) {
 			},
 		},
 	}
-	got, err := ResolveProperties(context.Background(), props, resources, nil, nil, cc)
+	got, err := ResolveProperties(context.Background(), props, resources, nil, nil, cc, "")
 	require.NoError(t, err)
 	// The nested Ref must be resolved to the physical id before joining.
 	require.Equal(t, "arn:abc123:literal", got["Arn"])
@@ -80,7 +80,7 @@ func TestResolveProperties_UnresolvedImportValue(t *testing.T) {
 	props := map[string]interface{}{
 		"Vpc": map[string]interface{}{"Fn::ImportValue": "missing-export"},
 	}
-	_, err := ResolveProperties(context.Background(), props, nil, nil, map[string]string{}, fakeCC{})
+	_, err := ResolveProperties(context.Background(), props, nil, nil, map[string]string{}, fakeCC{}, "")
 	require.Error(t, err)
 }
 
@@ -91,7 +91,7 @@ func TestResolveProperties_GetAttUnknownResource(t *testing.T) {
 			"Fn::GetAtt": []interface{}{"NoSuchResource", "Endpoint.Address"},
 		},
 	}
-	_, err := ResolveProperties(context.Background(), props, map[string]string{}, map[string]string{}, nil, fakeCC{})
+	_, err := ResolveProperties(context.Background(), props, map[string]string{}, map[string]string{}, nil, fakeCC{}, "")
 	require.Error(t, err)
 }
 
@@ -107,7 +107,7 @@ func TestResolveProperties_GetAttUnknownAttribute(t *testing.T) {
 			"Fn::GetAtt": []interface{}{"Db", "Endpoint.Port"},
 		},
 	}
-	_, err := ResolveProperties(context.Background(), props, resources, resourceTypes, nil, cc)
+	_, err := ResolveProperties(context.Background(), props, resources, resourceTypes, nil, cc, "")
 	require.Error(t, err)
 }
 
@@ -116,21 +116,23 @@ func TestResolveProperties_UnresolvedRefPassthrough(t *testing.T) {
 	props := map[string]interface{}{
 		"Region": map[string]interface{}{"Ref": "AWS::Region"},
 	}
-	got, err := ResolveProperties(context.Background(), props, map[string]string{}, nil, nil, fakeCC{})
+	got, err := ResolveProperties(context.Background(), props, map[string]string{}, nil, nil, fakeCC{}, "")
 	require.NoError(t, err)
 	require.Equal(t, "AWS::Region", got["Region"])
 }
 
 func TestResolveProperties_UnresolvedIntrinsicSentinel(t *testing.T) {
 	t.Parallel()
+	// Intrinsics we don't resolve (FindInMap, If, ...) surface as a marker rather
+	// than passing a raw map through.
 	props := map[string]interface{}{
-		"Sub":    map[string]interface{}{"Fn::Sub": "${AWS::StackName}-thing"},
-		"Select": map[string]interface{}{"Fn::Select": []interface{}{0, []interface{}{"a", "b"}}},
+		"Mapped": map[string]interface{}{"Fn::FindInMap": []interface{}{"M", "k1", "k2"}},
+		"Cond":   map[string]interface{}{"Fn::If": []interface{}{"C", "a", "b"}},
 	}
-	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{})
+	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{}, "")
 	require.NoError(t, err)
-	require.Equal(t, "<unresolved-intrinsic:Fn::Sub>", got["Sub"])
-	require.Equal(t, "<unresolved-intrinsic:Fn::Select>", got["Select"])
+	require.Equal(t, "<unresolved-intrinsic:Fn::FindInMap>", got["Mapped"])
+	require.Equal(t, "<unresolved-intrinsic:Fn::If>", got["Cond"])
 }
 
 func TestResolveProperties_NestedPropertyObjectPassthrough(t *testing.T) {
@@ -140,7 +142,7 @@ func TestResolveProperties_NestedPropertyObjectPassthrough(t *testing.T) {
 	props := map[string]interface{}{
 		"Tag": map[string]interface{}{"Key": "Name", "Value": "prod"},
 	}
-	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{})
+	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{}, "")
 	require.NoError(t, err)
 	require.Equal(t, map[string]interface{}{"Key": "Name", "Value": "prod"}, got["Tag"])
 }
@@ -165,7 +167,7 @@ func TestResolveProperties_DeepNestedResolution(t *testing.T) {
 			},
 		},
 	}
-	got, err := ResolveProperties(context.Background(), props, resources, nil, nil, fakeCC{})
+	got, err := ResolveProperties(context.Background(), props, resources, nil, nil, fakeCC{}, "")
 	require.NoError(t, err)
 
 	pd := got["PolicyDocument"].(map[string]interface{})
@@ -184,14 +186,14 @@ func TestResolveProperties_DeepNestedUnresolvedIntrinsic(t *testing.T) {
 	props := map[string]interface{}{
 		"Environment": map[string]interface{}{
 			"Variables": map[string]interface{}{
-				"URL": map[string]interface{}{"Fn::Sub": "https://${AWS::Region}.example.com"},
+				"REGION": map[string]interface{}{"Fn::FindInMap": []interface{}{"M", "k1", "k2"}},
 			},
 		},
 	}
-	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{})
+	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{}, "")
 	require.NoError(t, err)
 	env := got["Environment"].(map[string]interface{})["Variables"].(map[string]interface{})
-	require.Equal(t, "<unresolved-intrinsic:Fn::Sub>", env["URL"])
+	require.Equal(t, "<unresolved-intrinsic:Fn::FindInMap>", env["REGION"])
 }
 
 // panicCC fails the test if GetResource is ever called — used to prove a nested
@@ -219,8 +221,46 @@ func TestResolveProperties_NestedGetAttNotResolvedViaCloudControl(t *testing.T) 
 	}
 	got, err := ResolveProperties(context.Background(), props,
 		map[string]string{"Bucket": "my-bucket"}, map[string]string{"Bucket": "AWS::S3::Bucket"}, nil,
-		panicCC{t: t})
+		panicCC{t: t}, "")
 	require.NoError(t, err)
 	stmt := got["PolicyDocument"].(map[string]interface{})["Statement"].([]interface{})[0].(map[string]interface{})
 	require.Equal(t, "<unresolved-intrinsic:Fn::GetAtt>", stmt["Resource"])
+}
+
+func TestResolveProperties_FnSub(t *testing.T) {
+	t.Parallel()
+	resources := map[string]string{"MyBucket": "my-bucket-123"}
+	props := map[string]interface{}{
+		// String form: pseudo-param + Ref-style logical + a GetAtt (marker) + literal escape.
+		"Arn": map[string]interface{}{
+			"Fn::Sub": "arn:${AWS::Partition}:s3:${AWS::Region}:::${MyBucket}/${Thing.Attr}/${!Literal}",
+		},
+		// Array form with an explicit var map.
+		"Url": map[string]interface{}{
+			"Fn::Sub": []interface{}{"https://${Host}/x", map[string]interface{}{"Host": "example.com"}},
+		},
+	}
+	got, err := ResolveProperties(context.Background(), props, resources, nil, nil, fakeCC{}, "us-east-1")
+	require.NoError(t, err)
+	require.Equal(t, "arn:aws:s3:us-east-1:::my-bucket-123/<unresolved-intrinsic:Fn::GetAtt>/${Literal}", got["Arn"])
+	require.Equal(t, "https://example.com/x", got["Url"])
+}
+
+func TestResolveProperties_FnSelect(t *testing.T) {
+	t.Parallel()
+	props := map[string]interface{}{
+		// Index into a literal list (JSON number -> float64).
+		"Second": map[string]interface{}{"Fn::Select": []interface{}{float64(1), []interface{}{"a", "b", "c"}}},
+		// Index into a list whose element is a resolvable Ref.
+		"RefPick": map[string]interface{}{"Fn::Select": []interface{}{float64(0),
+			[]interface{}{map[string]interface{}{"Ref": "R"}}}},
+		// Non-literal list (an unresolved intrinsic) -> marker.
+		"Unres": map[string]interface{}{"Fn::Select": []interface{}{float64(0),
+			map[string]interface{}{"Fn::GetAZs": ""}}},
+	}
+	got, err := ResolveProperties(context.Background(), props, map[string]string{"R": "phys-r"}, nil, nil, fakeCC{}, "")
+	require.NoError(t, err)
+	require.Equal(t, "b", got["Second"])
+	require.Equal(t, "phys-r", got["RefPick"])
+	require.Equal(t, "<unresolved-intrinsic:Fn::Select>", got["Unres"])
 }
