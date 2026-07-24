@@ -937,7 +937,12 @@ func buildAssetSentinel(absPath, assetType string, zipAsFileArchive bool) (map[s
 		return nil, fmt.Errorf("archive path not found: %s", absPath)
 	}
 
-	// FileAsset: hash the file contents.
+	// FileAsset: hash the file contents. This branch is shared by TF and CFN and
+	// is intentionally NOT affected by the FileArchive zip-form scoping above — it
+	// is the path a Terraform `aws_s3_object` `source` (a FileAsset) patches
+	// through (config-dir-relative file + SHA256). Verified unchanged when adding
+	// patch-state cfn; CloudFormation has no S3 object resource type, so CFN
+	// migrations never reach it.
 	f, err := os.Open(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", absPath, err)
