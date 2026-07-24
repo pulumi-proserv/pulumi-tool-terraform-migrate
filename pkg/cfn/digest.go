@@ -37,6 +37,10 @@ type CfnResource struct {
 	PhysicalID     string                 `json:"physicalId,omitempty"`
 	ImportID       string                 `json:"importId,omitempty"`       // pre-resolved (lookup types only)
 	NativeImportID string                 `json:"nativeImportId,omitempty"` // aws-native composite ID (API Gateway family)
+	// SecretVersionImportID is set only for AWS::SecretsManager::Secret after live
+	// enrichment: the import ID (arn|versionId) for the companion aws:secretsmanager/
+	// secretVersion the agent must author (the version is not a CFN resource).
+	SecretVersionImportID string `json:"secretVersionImportId,omitempty"`
 	Attributes     map[string]interface{} `json:"attributes,omitempty"`
 	DerivedName    string                 `json:"derivedName,omitempty"`
 	CdkHashedName  bool                   `json:"cdkHashedName,omitempty"`

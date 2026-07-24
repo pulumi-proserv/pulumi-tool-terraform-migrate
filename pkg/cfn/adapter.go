@@ -16,6 +16,7 @@ package cfn
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/importid"
 )
@@ -73,9 +74,34 @@ func CfnGetter(attrs map[string]interface{}) func(importid.Role) string {
 		if !ok {
 			return ""
 		}
-		if v, ok := attrs[name]; ok {
-			return fmt.Sprintf("%v", v)
+		v, ok := attrs[name]
+		if !ok {
+			return ""
 		}
-		return ""
+		s := fmt.Sprintf("%v", v)
+		// CDK sets AWS::Lambda::Permission.FunctionName from Fn::GetAtt Function.Arn,
+		// so the value is a full ARN. The import ID (function/sid) and the imported
+		// `function` state must be the bare name, or a program emitting
+		// `function: fn.name` diffs and replaces (function is ForceNew).
+		if r == importid.RoleFunction {
+			return lambdaFunctionName(s)
+		}
+		return s
 	}
+}
+
+// lambdaFunctionName reduces a Lambda function reference to its bare name. A bare
+// name (or any non-ARN form) passes through unchanged; a full ARN
+// (arn:aws:lambda:REGION:ACCT:function:NAME[:QUALIFIER]) yields just NAME.
+func lambdaFunctionName(v string) string {
+	const marker = ":function:"
+	i := strings.Index(v, marker)
+	if i < 0 {
+		return v
+	}
+	n := v[i+len(marker):]
+	if j := strings.IndexByte(n, ':'); j >= 0 {
+		n = n[:j] // strip :version / :alias qualifier
+	}
+	return n
 }

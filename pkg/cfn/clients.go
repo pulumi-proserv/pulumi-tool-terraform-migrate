@@ -25,11 +25,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
 type cfnStackReader struct{ c *cloudformation.Client }
 type ccReader struct{ c *cloudcontrol.Client }
 type awsLookups struct{ ec2 *ec2.Client }
+type smReader struct{ c *secretsmanager.Client }
 
 // NewAWSClients builds real AWS SDK v2 adapters for the given region.
 func NewAWSClients(ctx context.Context, region string) (StackReader, CloudControlReader, Lookups, error) {
@@ -41,6 +43,26 @@ func NewAWSClients(ctx context.Context, region string) (StackReader, CloudContro
 		&ccReader{c: cloudcontrol.NewFromConfig(cfg)},
 		&awsLookups{ec2: ec2.NewFromConfig(cfg)},
 		nil
+}
+
+// NewSecretReader builds a Secrets Manager adapter for live secret enrichment.
+func NewSecretReader(ctx context.Context, region string) (SecretReader, error) {
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("load aws config: %w", err)
+	}
+	return &smReader{c: secretsmanager.NewFromConfig(cfg)}, nil
+}
+
+func (r *smReader) GetCurrentSecret(ctx context.Context, secretID string) (string, string, error) {
+	out, err := r.c.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId:     aws.String(secretID),
+		VersionStage: aws.String("AWSCURRENT"),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("get secret value %s: %w", secretID, err)
+	}
+	return aws.ToString(out.VersionId), aws.ToString(out.SecretString), nil
 }
 
 func (s *cfnStackReader) GetTemplate(ctx context.Context, stackName string) (string, error) {

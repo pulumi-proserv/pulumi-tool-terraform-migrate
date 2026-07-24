@@ -50,6 +50,15 @@ which case the digest contains plaintext and must be .gitignore'd).`,
 				return fmt.Errorf("build digest: %w", err)
 			}
 
+			// Enrich owned secrets with their live current value + version ID, so the
+			// companion SecretVersion imports zero-diff (see EnrichSecretsFromLive).
+			// Best-effort: a failure here just falls back to template values.
+			if secReader, serr := cfn.NewSecretReader(ctx, region); serr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: secret enrichment unavailable: %v\n", serr)
+			} else if serr := cfn.EnrichSecretsFromLive(ctx, digest, secReader); serr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: secret enrichment failed: %v\n", serr)
+			}
+
 			// Extract sensitive values into encrypted stack config (default on).
 			// ExtractSecrets redacts the digest in place so it is safe to read.
 			secretCount := 0

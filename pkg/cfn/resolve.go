@@ -57,6 +57,18 @@ func FillFromDigest(digest *StackDigest, importFile *pkg.ImportFile, mappings ma
 			res.Warnings = append(res.Warnings, "no digest match for "+entry.Name)
 			continue
 		}
+		// The SecretVersion is not a CFN resource; it matches the owning secret's
+		// logical ID and takes the live-enriched arn|versionId import ID.
+		if entry.Type == "aws:secretsmanager/secretVersion:SecretVersion" {
+			if r.SecretVersionImportID == "" {
+				res.Warnings = append(res.Warnings, "no live secret version for "+entry.Name+" (run digest cfn with AWS access)")
+				res.Unmatched++
+				continue
+			}
+			entry.ID = r.SecretVersionImportID
+			res.Filled++
+			continue
+		}
 		if provider == "native" && r.NativeImportID != "" {
 			// aws-native entry types (aws-native:apigateway:*) aren't in the
 			// classic-keyed spec table — use the pre-resolved native composite ID.

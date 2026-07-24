@@ -44,6 +44,45 @@ func TestFillFromDigest(t *testing.T) {
 	require.Equal(t, "dep|abc", importFile.Resources[2].ID)                 // native reversed
 }
 
+func TestFillFromDigest_SecretVersion(t *testing.T) {
+	t.Parallel()
+	// The SecretVersion is not a CFN resource; it matches the secret's logical ID
+	// (via a caas-sv-<logicalId> name) and is filled from the secret's live-enriched
+	// SecretVersionImportID.
+	digest := &StackDigest{Resources: []CfnResource{
+		{LogicalID: "iacallbacktoken", CfnType: "AWS::SecretsManager::Secret",
+			PulumiType:            "aws:secretsmanager/secret:Secret",
+			PhysicalID:            "arn:aws:secretsmanager:us-east-1:1:secret:foo-abc",
+			SecretVersionImportID: "arn:aws:secretsmanager:us-east-1:1:secret:foo-abc|v9"},
+	}}
+	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
+		{Type: "aws:secretsmanager/secret:Secret", Name: "caas-iacallbacktoken"},
+		{Type: "aws:secretsmanager/secretVersion:SecretVersion", Name: "caas-sv-iacallbacktoken"},
+	}}
+	res := FillFromDigest(digest, importFile, nil, "native")
+	require.Equal(t, 2, res.Filled)
+	require.Equal(t, "arn:aws:secretsmanager:us-east-1:1:secret:foo-abc", importFile.Resources[0].ID)
+	require.Equal(t, "arn:aws:secretsmanager:us-east-1:1:secret:foo-abc|v9", importFile.Resources[1].ID)
+}
+
+func TestFillFromDigest_SecretVersionMissingEnrichment(t *testing.T) {
+	t.Parallel()
+	// SecretVersion entry but no live enrichment ran (no AWS access): don't fabricate
+	// an ID from the secret ARN (which would be the wrong import format).
+	digest := &StackDigest{Resources: []CfnResource{
+		{LogicalID: "s", CfnType: "AWS::SecretsManager::Secret",
+			PulumiType: "aws:secretsmanager/secret:Secret",
+			PhysicalID: "arn:aws:secretsmanager:us-east-1:1:secret:s-abc"},
+	}}
+	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
+		{Type: "aws:secretsmanager/secretVersion:SecretVersion", Name: "caas-sv-s"},
+	}}
+	res := FillFromDigest(digest, importFile, nil, "native")
+	require.Equal(t, 0, res.Filled)
+	require.Equal(t, 1, res.Unmatched)
+	require.Empty(t, importFile.Resources[0].ID)
+}
+
 func TestFillFromDigest_ComposeErrorNotFilled(t *testing.T) {
 	t.Parallel()
 	digest := &StackDigest{Resources: []CfnResource{
