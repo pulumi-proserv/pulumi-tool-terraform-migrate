@@ -23,7 +23,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTfDigestCmd() *cobra.Command {
+// buildTfDigestCommand builds the tf-digest command body. Reused by both the
+// hidden top-level `tf-digest` alias and the `digest tf` subcommand.
+func buildTfDigestCommand(use string, hidden bool) *cobra.Command {
 	var from string
 	var stateFile string
 	var out string
@@ -38,8 +40,9 @@ func newTfDigestCmd() *cobra.Command {
 	var runtime string
 
 	cmd := &cobra.Command{
-		Use:   "tf-digest",
-		Short: "Digest Terraform sources and state into a tf-digest.json sidecar",
+		Use:    use,
+		Hidden: hidden,
+		Short:  "Digest Terraform sources and state into a tf-digest.json sidecar",
 		Long: `Digest Terraform configuration and state into a tf-digest.json sidecar
 file that describes Terraform module instances, their interfaces
 (inputs/outputs), and the Pulumi URNs of resources belonging to each
@@ -160,6 +163,8 @@ Examples:
 
 	return cmd
 }
+
+func newTfDigestCmd() *cobra.Command { return buildTfDigestCommand("tf-digest", true) } // hidden alias
 
 func init() {
 	rootCmd.AddCommand(newTfDigestCmd())
