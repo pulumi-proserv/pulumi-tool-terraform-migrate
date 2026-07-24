@@ -57,8 +57,11 @@ func FillFromDigest(digest *StackDigest, importFile *pkg.ImportFile, mappings ma
 			res.Warnings = append(res.Warnings, "no digest match for "+entry.Name)
 			continue
 		}
-		id, handled, err := importid.Compose(entry.Type, provider, CfnGetter(r.Attributes))
-		if handled && err != nil {
+		if provider == "native" && r.NativeImportID != "" {
+			// aws-native entry types (aws-native:apigateway:*) aren't in the
+			// classic-keyed spec table — use the pre-resolved native composite ID.
+			entry.ID = r.NativeImportID
+		} else if id, handled, err := importid.Compose(entry.Type, provider, CfnGetter(r.Attributes)); handled && err != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("compose failed for %s (%s): %v", entry.Name, entry.Type, err))
 			res.Unmatched++
 			continue

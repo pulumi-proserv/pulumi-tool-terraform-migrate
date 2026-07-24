@@ -35,7 +35,8 @@ type CfnResource struct {
 	CfnType        string                 `json:"cfnType"`
 	PulumiType     string                 `json:"pulumiType,omitempty"`
 	PhysicalID     string                 `json:"physicalId,omitempty"`
-	ImportID       string                 `json:"importId,omitempty"` // pre-resolved (lookup types only)
+	ImportID       string                 `json:"importId,omitempty"`       // pre-resolved (lookup types only)
+	NativeImportID string                 `json:"nativeImportId,omitempty"` // aws-native composite ID (API Gateway family)
 	Attributes     map[string]interface{} `json:"attributes,omitempty"`
 	DerivedName    string                 `json:"derivedName,omitempty"`
 	CdkHashedName  bool                   `json:"cdkHashedName,omitempty"`

@@ -102,6 +102,13 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 			}
 		}
 
+		// API Gateway family: pre-resolve the aws-native composite import ID
+		// (used when a node is authored with aws-native — resolve cfn --provider
+		// native picks NativeImportID up).
+		if id, ok := nativeAPIGatewayImportID(r.CfnType, attrs); ok {
+			res.NativeImportID = id
+		}
+
 		if id, isLookup, err := LookupImportID(ctx, r.CfnType, attrs, lk); err != nil {
 			return nil, fmt.Errorf("lookup %s: %w", r.LogicalID, err)
 		} else if isLookup {
