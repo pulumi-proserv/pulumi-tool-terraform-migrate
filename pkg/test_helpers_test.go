@@ -25,12 +25,12 @@ import (
 
 // testFieldDef defines a field for a test provider schema.
 type testFieldDef struct {
-	pulumiName string              // Pulumi camelCase name override (empty = use TerraformToPulumiNameV2)
-	default_   any                 // schema default value
-	hasDefault bool                // whether to set default
-	computed   bool                // Computed flag
-	optional   bool                // Optional flag
-	required   bool                // Required flag
+	pulumiName string                 // Pulumi camelCase name override (empty = use TerraformToPulumiNameV2)
+	default_   any                    // schema default value
+	hasDefault bool                   // whether to set default
+	computed   bool                   // Computed flag
+	optional   bool                   // Optional flag
+	required   bool                   // Required flag
 	asset      *info.AssetTranslation // asset metadata
 }
 
@@ -101,12 +101,12 @@ func buildTestState(pulumiType, name string, inputs map[string]any) []byte {
 		"deployment": map[string]any{
 			"resources": []any{
 				map[string]any{
-					"urn":    "urn:pulumi:dev::proj::" + pulumiType + "::" + name,
-					"type":   pulumiType,
-					"custom": true,
-					"id":     name,
-					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
-					"inputs": inputs,
+					"urn":     "urn:pulumi:dev::proj::" + pulumiType + "::" + name,
+					"type":    pulumiType,
+					"custom":  true,
+					"id":      name,
+					"parent":  "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
+					"inputs":  inputs,
 					"outputs": inputs,
 				},
 			},

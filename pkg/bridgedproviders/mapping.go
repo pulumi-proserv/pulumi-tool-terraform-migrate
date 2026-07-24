@@ -63,7 +63,7 @@ func GetMappingFromBinary(ctx context.Context, binaryPath string, opts GetMappin
 		return nil, fmt.Errorf("binaryPath is required")
 	}
 	if opts.Key == "" {
-		return nil, fmt.Errorf("Key is required in GetMappingOptions")
+		return nil, fmt.Errorf("key is required in GetMappingOptions")
 	}
 
 	// Create a minimal host implementation for provider initialization
