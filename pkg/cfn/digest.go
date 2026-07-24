@@ -21,6 +21,10 @@ type StackDigest struct {
 	StackName string        `json:"stackName"`
 	Region    string        `json:"region"`
 	Resources []CfnResource `json:"resources"`
+	// NoEchoParameters are template parameters marked NoEcho. Their values are
+	// masked by CloudFormation and cannot be extracted — they must be set as
+	// stack-config secrets manually. Surfaced here as a warning.
+	NoEchoParameters []string `json:"noEchoParameters,omitempty"`
 }
 
 // CfnResource is one resource in the deployed stack. ImportID is set ONLY for

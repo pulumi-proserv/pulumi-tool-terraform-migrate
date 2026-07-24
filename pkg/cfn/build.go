@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -48,6 +49,9 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 			Type       string                 `json:"Type"`
 			Properties map[string]interface{} `json:"Properties"`
 		} `json:"Resources"`
+		Parameters map[string]struct {
+			NoEcho interface{} `json:"NoEcho"`
+		} `json:"Parameters"`
 	}
 	if err := json.Unmarshal([]byte(tmplStr), &tmpl); err != nil {
 		return nil, fmt.Errorf("parse template: %w", err)
@@ -96,5 +100,26 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 		}
 		digest.Resources = append(digest.Resources, res)
 	}
+
+	// NoEcho parameter values are masked by CloudFormation and can't be
+	// extracted — surface the names so they can be set as secrets manually.
+	for name, p := range tmpl.Parameters {
+		if isTruthy(p.NoEcho) {
+			digest.NoEchoParameters = append(digest.NoEchoParameters, name)
+		}
+	}
+	sort.Strings(digest.NoEchoParameters)
+
 	return digest, nil
+}
+
+// isTruthy reports whether a CFN NoEcho value (bool true or string "true") is set.
+func isTruthy(v interface{}) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return strings.EqualFold(t, "true")
+	}
+	return false
 }
