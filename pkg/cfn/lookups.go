@@ -38,12 +38,11 @@ func str(attrs map[string]interface{}, key string) string {
 // AWS call. isLookupType is false for every other type (composed later from
 // attributes via the shared spec core).
 //
-// Note: CFN "AWS::IAM::Policy" (an inline policy embedded in a role/user/group)
-// is intentionally NOT auto-resolved here. It maps to
-// aws:iam/rolePolicy:RolePolicy with a "role:policy-name" import ID that
-// requires a role-scoped list-role-policies lookup, and a single inline
-// policy can bind to multiple principals. This is a documented manual case
-// rather than something we guess at.
+// Note: CFN "AWS::IAM::Policy" (an inline policy) is resolved in the digest
+// builder (see inlineRolePolicyImportID), not here — its RoleName:PolicyName
+// import ID comes from resolved template attributes with no AWS call. Only the
+// single-role case is auto-resolved; a policy bound to multiple roles or to
+// users/groups is left for manual handling.
 func LookupImportID(ctx context.Context, cfnType string, attrs map[string]interface{}, lk Lookups) (string, bool, error) {
 	switch cfnType {
 	case "AWS::EC2::SecurityGroupIngress":

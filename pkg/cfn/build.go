@@ -93,6 +93,15 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 		}
 		res.Attributes = attrs
 
+		// Inline AWS::IAM::Policy: map to aws:iam/rolePolicy:RolePolicy and
+		// pre-resolve its RoleName:PolicyName import ID (single-role case).
+		if r.CfnType == "AWS::IAM::Policy" {
+			if id, pt, ok := inlineRolePolicyImportID(attrs); ok {
+				res.PulumiType = pt
+				res.ImportID = id
+			}
+		}
+
 		if id, isLookup, err := LookupImportID(ctx, r.CfnType, attrs, lk); err != nil {
 			return nil, fmt.Errorf("lookup %s: %w", r.LogicalID, err)
 		} else if isLookup {
