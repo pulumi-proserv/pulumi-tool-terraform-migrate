@@ -103,7 +103,7 @@ Examples:
 				}
 				var mf struct {
 					Modules   map[string]string `yaml:"modules"`
-					Mappings  map[string]string `yaml:"mappings"`  // deprecated alias for modules
+					Mappings  map[string]string `yaml:"mappings"` // deprecated alias for modules
 					Resources map[string]string `yaml:"resources"`
 				}
 				if err := yaml.Unmarshal(mfData, &mf); err != nil {

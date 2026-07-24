@@ -71,6 +71,9 @@ func TestResourceToCtyValue(t *testing.T) {
 	)
 
 	value, err := StateToCtyValue(res, resourceType)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	autogold.ExpectFile(t, value)
 }

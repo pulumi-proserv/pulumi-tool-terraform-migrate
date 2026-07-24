@@ -123,11 +123,11 @@ type PulumiState struct {
 
 func (st PulumiState) FindProvider(identity PulumiResourceID) (PulumiResource, error) {
 	for _, p := range st.Providers {
-		if p.PulumiResourceID.Equal(identity) {
+		if p.Equal(identity) {
 			return p, nil
 		}
 	}
-	return PulumiResource{}, fmt.Errorf("No providers found with ID=%q Name=%q Type=%q",
+	return PulumiResource{}, fmt.Errorf("no providers found with ID=%q Name=%q Type=%q",
 		identity.ID, identity.Name, identity.Type)
 }
 

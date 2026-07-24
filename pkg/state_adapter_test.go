@@ -139,13 +139,13 @@ func Test_convertState_simple(t *testing.T) {
 
 	require.Equal(t, 1, len(pulumiState.Providers), "expected 1 provider")
 	require.Equal(t, 1, len(pulumiState.Resources), "expected 1 resource")
-	require.Equal(t, "pulumi:providers:aws", pulumiState.Providers[0].PulumiResourceID.Type)
+	require.Equal(t, "pulumi:providers:aws", pulumiState.Providers[0].Type)
 
 	resource := pulumiState.Resources[0]
 	require.NotNil(t, resource.Provider, "resource has no provider")
 	provider, err := pulumiState.FindProvider(*resource.Provider)
 	require.NoError(t, err, "failed to find provider for resource")
-	require.Equal(t, "pulumi:providers:aws", provider.PulumiResourceID.Type)
+	require.Equal(t, "pulumi:providers:aws", provider.Type)
 }
 
 func Test_convertState_multi_provider(t *testing.T) {
@@ -169,14 +169,14 @@ func Test_convertState_multi_provider(t *testing.T) {
 
 	providerTypes := make(map[string]bool)
 	for _, provider := range pulumiState.Providers {
-		providerTypes[provider.PulumiResourceID.Type] = true
+		providerTypes[provider.Type] = true
 	}
 	require.True(t, providerTypes["pulumi:providers:random"], "random provider should exist")
 	require.True(t, providerTypes["pulumi:providers:tls"], "tls provider should exist")
 
 	var randomResource *PulumiResource
 	for i := range pulumiState.Resources {
-		if pulumiState.Resources[i].PulumiResourceID.Type == "random:index/randomString:RandomString" {
+		if pulumiState.Resources[i].Type == "random:index/randomString:RandomString" {
 			randomResource = &pulumiState.Resources[i]
 			break
 		}
@@ -185,12 +185,12 @@ func Test_convertState_multi_provider(t *testing.T) {
 	require.NotNil(t, randomResource.Provider, "random_string has no provider")
 	randomProvider, err := pulumiState.FindProvider(*randomResource.Provider)
 	require.NoError(t, err, "failed to find provider for random_string")
-	require.Equal(t, "pulumi:providers:random", randomProvider.PulumiResourceID.Type,
+	require.Equal(t, "pulumi:providers:random", randomProvider.Type,
 		"random_string should be linked to random provider")
 
 	var tlsResource *PulumiResource
 	for i := range pulumiState.Resources {
-		if pulumiState.Resources[i].PulumiResourceID.Type == "tls:index/privateKey:PrivateKey" {
+		if pulumiState.Resources[i].Type == "tls:index/privateKey:PrivateKey" {
 			tlsResource = &pulumiState.Resources[i]
 			break
 		}
@@ -199,7 +199,7 @@ func Test_convertState_multi_provider(t *testing.T) {
 	require.NotNil(t, tlsResource.Provider, "tls_private_key has no provider")
 	tlsProvider, err := pulumiState.FindProvider(*tlsResource.Provider)
 	require.NoError(t, err, "failed to find provider for tls_private_key")
-	require.Equal(t, "pulumi:providers:tls", tlsProvider.PulumiResourceID.Type,
+	require.Equal(t, "pulumi:providers:tls", tlsProvider.Type,
 		"tls_private_key should be linked to tls provider")
 }
 
@@ -222,7 +222,7 @@ func Test_convertState_corrupted_state(t *testing.T) {
 	require.NoError(t, err, "failed to convert state")
 	require.Equal(t, 0, len(errorMessages), "deprecated attributes should be skipped, not cause errors")
 	require.Equal(t, 1, len(pulumiState.Resources), "resource should still be translated")
-	require.Equal(t, "random:index/randomPassword:RandomPassword", pulumiState.Resources[0].PulumiResourceID.Type)
+	require.Equal(t, "random:index/randomPassword:RandomPassword", pulumiState.Resources[0].Type)
 }
 
 func Test_convertState_unknown_provider(t *testing.T) {
@@ -251,7 +251,7 @@ func Test_convertState_unknown_provider(t *testing.T) {
 	require.Len(t, pulumiState.Providers, 1, "expected 1 provider")
 	require.Len(t, pulumiState.Resources, 1, "expected 1 resource (unknown_resource should be skipped)")
 
-	require.Equal(t, "random:index/randomString:RandomString", pulumiState.Resources[0].PulumiResourceID.Type)
+	require.Equal(t, "random:index/randomString:RandomString", pulumiState.Resources[0].Type)
 }
 
 func TestFormatDynamicProviderName(t *testing.T) {
@@ -356,4 +356,3 @@ func TestPulumiNameFromTerraformAddress(t *testing.T) {
 		})
 	}
 }
-
