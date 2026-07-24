@@ -109,6 +109,11 @@ type patchFieldDescriptor struct {
 	AssetKind              *int
 	ArchiveFormat          *int
 	HashField              string
+	// ZipAsFileArchive: when true, a .zip source is emitted as a file-based
+	// FileArchive sentinel (matching a program's FileArchive("x.zip")); when
+	// false (the TF default) a .zip is emitted as an embedded AssetArchive. Set
+	// only by the CFN patcher — the TF path is unchanged.
+	ZipAsFileArchive bool
 }
 
 // tfToPulumiField maps TF snake_case attribute names to Pulumi camelCase field names
@@ -533,7 +538,7 @@ func patchResourceFields(
 					absPath = filepath.Join(configDir, base)
 				}
 				absPath, _ = filepath.Abs(absPath)
-				sentinel, err := buildAssetSentinel(absPath, fd.AssetType)
+				sentinel, err := buildAssetSentinel(absPath, fd.AssetType, fd.ZipAsFileArchive)
 				if err != nil && fd.AssetType == "FileArchive" && digResource != nil {
 					if fnName, ok := digResource.Attributes["function_name"].(string); ok && fnName != "" {
 						fnArn, _ := digResource.Attributes["arn"].(string)
@@ -876,7 +881,7 @@ const (
 //  2. Zip file → extracts contents into an AssetArchive sentinel with
 //     StringAsset text entries for each file. The engine hashes both the
 //     state-side and program-side archives identically.
-func buildAssetSentinel(absPath, assetType string) (map[string]interface{}, error) {
+func buildAssetSentinel(absPath, assetType string, zipAsFileArchive bool) (map[string]interface{}, error) {
 	if assetType == "FileArchive" {
 		// Try directory first (strip .zip).
 		dirPath := strings.TrimSuffix(absPath, ".zip")
@@ -892,23 +897,27 @@ func buildAssetSentinel(absPath, assetType string) (map[string]interface{}, erro
 			}, nil
 		}
 
-		// Try as a zip file → file-based FileArchive sentinel. This matches a
-		// program's `new pulumi.asset.FileArchive("x.zip")`, which serializes as
-		// archive(file:<hash>){path} — the same shape as the directory branch, not
-		// the embedded-assets AssetArchive form. The hash is Pulumi's own archive
-		// hash of the zip (pulumiarchive.FromPath), identical to what the program
-		// computes, so preview is zero-diff.
+		// Zip file handling. Two shapes, depending on how the program declares it:
+		//   - zipAsFileArchive (CFN path): file-based FileArchive sentinel
+		//     archive(file:<hash>){path}, matching a program's FileArchive("x.zip").
+		//     The hash is Pulumi's own archive hash of the zip, identical to what
+		//     the program computes, so preview is zero-diff.
+		//   - default (TF path, unchanged): embedded AssetArchive with a
+		//     StringAsset per zip entry, matching AssetArchive({file: StringAsset}).
 		if strings.HasSuffix(absPath, ".zip") {
 			if _, err := os.Stat(absPath); err == nil {
-				hash, err := hashFileArchive(absPath)
-				if err != nil {
-					return nil, fmt.Errorf("hashing zip %s: %w", absPath, err)
+				if zipAsFileArchive {
+					hash, err := hashFileArchive(absPath)
+					if err != nil {
+						return nil, fmt.Errorf("hashing zip %s: %w", absPath, err)
+					}
+					return map[string]interface{}{
+						sigKey: archiveSig,
+						"hash": hash,
+						"path": absPath,
+					}, nil
 				}
-				return map[string]interface{}{
-					sigKey: archiveSig,
-					"hash": hash,
-					"path": absPath,
-				}, nil
+				return buildAssetArchiveFromZip(absPath)
 			}
 		}
 
