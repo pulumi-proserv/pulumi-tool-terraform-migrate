@@ -113,16 +113,9 @@ func (l *awsLookups) SecurityGroupRuleID(ctx context.Context, egress bool, props
 	}
 	var matches []string
 	for _, rule := range out.SecurityGroupRules {
-		if aws.ToBool(rule.IsEgress) != egress {
-			continue
+		if sgRuleMatches(rule, props, egress) {
+			matches = append(matches, aws.ToString(rule.SecurityGroupRuleId))
 		}
-		if p, ok := props["IpProtocol"]; ok && aws.ToString(rule.IpProtocol) != fmt.Sprintf("%v", p) {
-			continue
-		}
-		if c, ok := props["CidrIp"]; ok && aws.ToString(rule.CidrIpv4) != fmt.Sprintf("%v", c) {
-			continue
-		}
-		matches = append(matches, aws.ToString(rule.SecurityGroupRuleId))
 	}
 	if len(matches) != 1 {
 		return "", fmt.Errorf("expected exactly one matching SG rule for group %s (egress=%v), got %d", groupID, egress, len(matches))
