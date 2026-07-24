@@ -35,6 +35,10 @@ type CfnResource struct {
 	CfnType        string                 `json:"cfnType"`
 	PulumiType     string                 `json:"pulumiType,omitempty"`
 	PhysicalID     string                 `json:"physicalId,omitempty"`
+	// Region is the stack's region (a CloudFormation stack is single-region), set
+	// on every resource so region-scoped consumers (e.g. Lambda code download in
+	// patch-state cfn) can read it per-resource without a separate flag.
+	Region string `json:"region,omitempty"`
 	ImportID       string                 `json:"importId,omitempty"`       // pre-resolved (lookup types only)
 	NativeImportID string                 `json:"nativeImportId,omitempty"` // aws-native composite ID (API Gateway family)
 	// SecretVersionImportID is set only for AWS::SecretsManager::Secret after live

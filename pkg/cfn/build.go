@@ -72,7 +72,7 @@ func BuildDigest(ctx context.Context, stackName, region string, sr StackReader, 
 
 	digest := &StackDigest{StackName: stackName, Region: region}
 	for _, r := range stackResources {
-		res := CfnResource{LogicalID: r.LogicalID, CfnType: r.CfnType, PhysicalID: r.PhysicalID}
+		res := CfnResource{LogicalID: r.LogicalID, CfnType: r.CfnType, PhysicalID: r.PhysicalID, Region: region}
 		if shouldSkip(r.CfnType) {
 			res.Skipped, res.SkipReason = true, "CFN-only/CDK resource"
 			digest.Resources = append(digest.Resources, res)

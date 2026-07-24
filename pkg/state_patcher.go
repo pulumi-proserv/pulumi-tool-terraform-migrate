@@ -211,6 +211,70 @@ func semverAtLeast(version, minimum string) bool {
 	return vPat >= mPat
 }
 
+// notReadFieldMeta holds per-field metadata from the fields file, indexed by
+// Pulumi resource type. Shared by both the TF (PatchState) and CFN
+// (PatchStateFromCFN) patching paths.
+type notReadFieldMeta struct {
+	Default       interface{}
+	Asset         string // "FileAsset", "FileArchive", or ""
+	AssetKind     *int
+	ArchiveFormat *int
+	HashField     string
+}
+
+// buildNotReadByType builds field sets keyed by both full and short Pulumi
+// type. The fields file uses full type keys (aws:secretsmanager/secret:Secret),
+// but resources are matched by short type (secret:Secret) for convenience.
+func buildNotReadByType(fieldsFile *FieldsFile) map[string]map[string]notReadFieldMeta {
+	notReadByType := map[string]map[string]notReadFieldMeta{}
+	for fullType, cat := range fieldsFile.Fields {
+		if len(cat.NotRead) > 0 {
+			fields := make(map[string]notReadFieldMeta, len(cat.NotRead))
+			for pulumiField, info := range cat.NotRead {
+				fields[pulumiField] = notReadFieldMeta{
+					Default:       info.Default,
+					Asset:         info.Asset,
+					AssetKind:     info.AssetKind,
+					ArchiveFormat: info.ArchiveFormat,
+					HashField:     info.HashField,
+				}
+			}
+			notReadByType[fullType] = fields
+			st := shortPulumiType(fullType)
+			if st != "" {
+				notReadByType[st] = fields
+			}
+		}
+	}
+	return notReadByType
+}
+
+// buildProviderVersions builds a map of provider URN → version string by
+// scanning the state's provider resources.
+func buildProviderVersions(resourcesRaw []interface{}) map[string]string {
+	providerVersions := make(map[string]string)
+	for _, raw := range resourcesRaw {
+		rMap, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		resType, _ := rMap["type"].(string)
+		if !strings.HasPrefix(resType, "pulumi:providers:") {
+			continue
+		}
+		urn, _ := rMap["urn"].(string)
+		inputs, _ := rMap["inputs"].(map[string]interface{})
+		if inputs == nil {
+			continue
+		}
+		version, _ := inputs["version"].(string)
+		if version != "" && urn != "" {
+			providerVersions[urn] = version
+		}
+	}
+	return providerVersions
+}
+
 // providerPackage extracts the provider package name from a Pulumi resource type token.
 // "aws:s3/bucket:Bucket" → "aws"
 func providerPackage(resourceType string) string {
@@ -654,60 +718,13 @@ func PatchState(
 		return nil, nil, fmt.Errorf("state missing resources")
 	}
 
-	// fieldMeta holds per-field metadata from the fields file.
-	type fieldMeta struct {
-		Default       interface{}
-		Asset         string // "FileAsset", "FileArchive", or ""
-		AssetKind     *int
-		ArchiveFormat *int
-		HashField     string
-	}
-
 	// Build field sets keyed by both full and short type.
 	// The fields file uses full type keys (aws:secretsmanager/secret:Secret),
 	// but we match state resources by short type (secret:Secret) for convenience.
-	notReadByType := map[string]map[string]fieldMeta{} // type → {pulumiField → meta}
-	for fullType, cat := range fieldsFile.Fields {
-		if len(cat.NotRead) > 0 {
-			fields := make(map[string]fieldMeta, len(cat.NotRead))
-			for pulumiField, info := range cat.NotRead {
-				fields[pulumiField] = fieldMeta{
-					Default:       info.Default,
-					Asset:         info.Asset,
-					AssetKind:     info.AssetKind,
-					ArchiveFormat: info.ArchiveFormat,
-					HashField:     info.HashField,
-				}
-			}
-			notReadByType[fullType] = fields
-			st := shortPulumiType(fullType)
-			if st != "" {
-				notReadByType[st] = fields
-			}
-		}
-	}
+	notReadByType := buildNotReadByType(fieldsFile)
 
 	// Build provider version map: provider URN → version string.
-	providerVersions := make(map[string]string)
-	for _, raw := range resourcesRaw {
-		rMap, ok := raw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		resType, _ := rMap["type"].(string)
-		if !strings.HasPrefix(resType, "pulumi:providers:") {
-			continue
-		}
-		urn, _ := rMap["urn"].(string)
-		inputs, _ := rMap["inputs"].(map[string]interface{})
-		if inputs == nil {
-			continue
-		}
-		version, _ := inputs["version"].(string)
-		if version != "" && urn != "" {
-			providerVersions[urn] = version
-		}
-	}
+	providerVersions := buildProviderVersions(resourcesRaw)
 
 	// Extract resource info from state for matching.
 	stateInfos := make(map[string]stateResourceInfo)
@@ -875,10 +892,23 @@ func buildAssetSentinel(absPath, assetType string) (map[string]interface{}, erro
 			}, nil
 		}
 
-		// Try as a zip file → extract into AssetArchive sentinel.
+		// Try as a zip file → file-based FileArchive sentinel. This matches a
+		// program's `new pulumi.asset.FileArchive("x.zip")`, which serializes as
+		// archive(file:<hash>){path} — the same shape as the directory branch, not
+		// the embedded-assets AssetArchive form. The hash is Pulumi's own archive
+		// hash of the zip (pulumiarchive.FromPath), identical to what the program
+		// computes, so preview is zero-diff.
 		if strings.HasSuffix(absPath, ".zip") {
 			if _, err := os.Stat(absPath); err == nil {
-				return buildAssetArchiveFromZip(absPath)
+				hash, err := hashFileArchive(absPath)
+				if err != nil {
+					return nil, fmt.Errorf("hashing zip %s: %w", absPath, err)
+				}
+				return map[string]interface{}{
+					sigKey: archiveSig,
+					"hash": hash,
+					"path": absPath,
+				}, nil
 			}
 		}
 
@@ -993,24 +1023,33 @@ func buildAssetArchiveFromZip(zipPath string) (map[string]interface{}, error) {
 	}, nil
 }
 
-// downloadLambdaCodeAsArchive downloads a Lambda function's deployed code from AWS,
-// extracts the zip, and constructs an AssetArchive sentinel with StringAsset entries.
-// The region is extracted from the function ARN (arn:aws:lambda:REGION:...).
-func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface{}, error) {
-	ctx := context.Background()
-
-	// Extract region from ARN if available.
+// lambdaCodeLocation calls Lambda GetFunction and returns the presigned
+// download URL for the function's deployed code. The region is extracted
+// from the function ARN (arn:aws:lambda:REGION:...) when provided.
+func lambdaCodeLocation(ctx context.Context, functionName, arn, fallbackRegion string) (string, error) {
 	var optFns []func(*awsconfig.LoadOptions) error
+	// Prefer the function's OWN region from its ARN (arn:aws:lambda:REGION:...)
+	// so each Lambda is fetched from where it actually lives. Fall back to
+	// fallbackRegion (the stack/--region) only when the ARN carries none — CFN
+	// digests have no per-Lambda ARN, so they rely on the stack region, which is
+	// correct because a CloudFormation stack is single-region.
+	region := ""
 	if arn != "" {
 		parts := strings.Split(arn, ":")
 		if len(parts) >= 4 && parts[3] != "" {
-			optFns = append(optFns, awsconfig.WithRegion(parts[3]))
+			region = parts[3]
 		}
+	}
+	if region == "" {
+		region = fallbackRegion
+	}
+	if region != "" {
+		optFns = append(optFns, awsconfig.WithRegion(region))
 	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, optFns...)
 	if err != nil {
-		return nil, fmt.Errorf("loading AWS config: %w", err)
+		return "", fmt.Errorf("loading AWS config: %w", err)
 	}
 
 	client := lambda.NewFromConfig(cfg)
@@ -1018,15 +1057,29 @@ func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface
 		FunctionName: &functionName,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("getting function %s: %w", functionName, err)
+		return "", fmt.Errorf("getting function %s: %w", functionName, err)
 	}
 
 	if result.Code == nil || result.Code.Location == nil {
-		return nil, fmt.Errorf("no code location for function %s", functionName)
+		return "", fmt.Errorf("no code location for function %s", functionName)
+	}
+
+	return *result.Code.Location, nil
+}
+
+// downloadLambdaCodeAsArchive downloads a Lambda function's deployed code from AWS,
+// extracts the zip, and constructs an AssetArchive sentinel with StringAsset entries.
+// The region is extracted from the function ARN (arn:aws:lambda:REGION:...).
+func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface{}, error) {
+	ctx := context.Background()
+
+	location, err := lambdaCodeLocation(ctx, functionName, arn, "")
+	if err != nil {
+		return nil, err
 	}
 
 	// Download the zip from the presigned URL.
-	resp, err := http.Get(*result.Code.Location)
+	resp, err := http.Get(location)
 	if err != nil {
 		return nil, fmt.Errorf("downloading code for %s: %w", functionName, err)
 	}
@@ -1046,6 +1099,39 @@ func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface
 	tmpFile.Close()
 
 	return buildAssetArchiveFromZip(tmpFile.Name())
+}
+
+// DownloadLambdaCodeToFile downloads a Lambda function's deployed code zip
+// from AWS and writes it to destPath (creating parent directories as needed).
+// Used by `patch-state cfn` Tier 2 to pre-download deployed Lambda code so
+// it can be referenced as a local FileArchive asset.
+func DownloadLambdaCodeToFile(ctx context.Context, functionName, arn, region, destPath string) error {
+	location, err := lambdaCodeLocation(ctx, functionName, arn, region)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.Get(location)
+	if err != nil {
+		return fmt.Errorf("downloading code for %s: %w", functionName, err)
+	}
+	defer resp.Body.Close()
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("creating directory for %s: %w", destPath, err)
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", destPath, err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("writing code zip to %s: %w", destPath, err)
+	}
+
+	return nil
 }
 
 // patchedOutputFieldInfo tracks an output field that was modified by the patcher.
