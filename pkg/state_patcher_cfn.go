@@ -31,6 +31,46 @@ func logicalIDFromName(name string) string {
 	return name
 }
 
+// StateLogicalIDsByType returns the set of CFN logical IDs (the last "-"-segment
+// of each resource name) of custom resources in the exported state whose Pulumi
+// type matches pulumiType (compared by short type token). patch-state cfn uses
+// it to download Lambda code only for functions actually present in the migrated
+// program, not every function in the digest.
+func StateLogicalIDsByType(stateData []byte, pulumiType string) (map[string]bool, error) {
+	var state map[string]interface{}
+	dec := json.NewDecoder(strings.NewReader(string(stateData)))
+	dec.UseNumber()
+	if err := dec.Decode(&state); err != nil {
+		return nil, fmt.Errorf("parsing state: %w", err)
+	}
+	ids := map[string]bool{}
+	deployment, ok := state["deployment"].(map[string]interface{})
+	if !ok {
+		return ids, nil
+	}
+	resources, ok := deployment["resources"].([]interface{})
+	if !ok {
+		return ids, nil
+	}
+	want := shortPulumiType(pulumiType)
+	for _, raw := range resources {
+		rMap, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if custom, _ := rMap["custom"].(bool); !custom {
+			continue
+		}
+		resType, _ := rMap["type"].(string)
+		if shortPulumiType(resType) != want {
+			continue
+		}
+		urn, _ := rMap["urn"].(string)
+		ids[logicalIDFromName(urnName(urn))] = true
+	}
+	return ids, nil
+}
+
 // PatchStateFromCFN patches not_read fields from a CFN digest into imported
 // state. It mirrors PatchState's resource-walking loop, but resolves values
 // from a nameMapByLogicalID (built by the caller from a cfn.StackDigest)

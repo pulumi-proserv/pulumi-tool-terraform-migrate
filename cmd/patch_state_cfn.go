@@ -140,11 +140,20 @@ Example:
 			}
 
 			// Tier 2: pre-download deployed Lambda code for any function whose
-			// fields file entry declares a "code" asset.
+			// fields file entry declares a "code" asset — but only for functions
+			// actually present in the migrated program's state, not every function
+			// in the digest (e.g. dropped provider-framework lambdas).
+			lambdaIDsInState, err := pkg.StateLogicalIDsByType(stateData, "aws:lambda/function:Function")
+			if err != nil {
+				return fmt.Errorf("scanning state for lambdas: %w", err)
+			}
 			ctx := context.Background()
 			for i := range digest.Resources {
 				r := &digest.Resources[i]
 				if r.Skipped || r.PulumiType != "aws:lambda/function:Function" {
+					continue
+				}
+				if !lambdaIDsInState[r.LogicalID] {
 					continue
 				}
 				if !fieldsFileHasCodeAsset(fieldsFile, r.PulumiType) {

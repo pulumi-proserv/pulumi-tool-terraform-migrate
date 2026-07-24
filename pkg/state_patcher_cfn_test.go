@@ -25,6 +25,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestStateLogicalIDsByType(t *testing.T) {
+	t.Parallel()
+	state := []byte(`{"deployment":{"resources":[
+		{"urn":"urn:pulumi:dev::p::pulumi:pulumi:Stack::p-dev","type":"pulumi:pulumi:Stack","custom":false},
+		{"urn":"urn:pulumi:dev::p::aws:lambda/function:Function::caas-authlambda5AE8A89F","type":"aws:lambda/function:Function","custom":true},
+		{"urn":"urn:pulumi:dev::p::aws:lambda/function:Function::caas-lambdafunction841552AF","type":"aws:lambda/function:Function","custom":true},
+		{"urn":"urn:pulumi:dev::p::aws:s3/bucket:Bucket::caas-imagesbucketD8E2A22E","type":"aws:s3/bucket:Bucket","custom":true}
+	]}}`)
+
+	ids, err := StateLogicalIDsByType(state, "aws:lambda/function:Function")
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{
+		"authlambda5AE8A89F":     true,
+		"lambdafunction841552AF": true,
+	}, ids)
+	// A function present in a digest but absent from state is not returned, so
+	// patch-state cfn won't download its code.
+	require.False(t, ids["migrationproviderframeworkonEvent"])
+}
+
 func TestPatchStateFromCFN_DefaultPatch(t *testing.T) {
 	t.Parallel()
 
