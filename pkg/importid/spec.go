@@ -47,7 +47,6 @@ const (
 	RoleType       Role = "recordType"
 	RoleSetID      Role = "setIdentifier"
 	RoleStage      Role = "stage"
-	RoleAuthorizer Role = "authorizer"
 
 	RoleScalingTargetID Role = "scalingTargetId"
 	RoleEcsID           Role = "ecsId"
@@ -82,7 +81,10 @@ var Specs = map[string]IDSpec{
 	"aws:apigateway/method:Method":                                   {Classic: []Role{RoleRestApi, RoleResource, RoleHTTP}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleResource, RoleHTTP}, NativeDelim: "|"},
 	"aws:apigateway/usagePlanKey:UsagePlanKey":                       {Classic: []Role{RoleUsagePlan, RoleKey}, ClassicDelim: "/", Native: []Role{RoleUsagePlan, RoleKey}, NativeDelim: "|"},
 	"aws:apigateway/stage:Stage":                                     {Native: []Role{RoleRestApi, RoleStage}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleStage}, ClassicDelim: "/"},
-	"aws:apigateway/authorizer:Authorizer":                           {Native: []Role{RoleRestApi, RoleAuthorizer}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleAuthorizer}, ClassicDelim: "/"},
+	// Authorizer import ID is RestApiId/<authorizer-id>, where the authorizer id
+	// is the resource's physical id (exposed as CFN "Id") — there is no
+	// "AuthorizerId" template property. Same shape as Resource/Deployment.
+	"aws:apigateway/authorizer:Authorizer":                           {Native: []Role{RoleRestApi, RoleID}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/"},
 	"aws:cognito/userPoolClient:UserPoolClient":                      {Classic: []Role{RoleUserPool, RoleID}, ClassicDelim: "/"},
 	"aws:ec2/routeTableAssociation:RouteTableAssociation":            {Classic: []Role{RoleSubnet, RoleRouteTbl}, ClassicDelim: "/"},
 	"aws:transfer/user:User":                                         {Classic: []Role{RoleServer, RoleUser}, ClassicDelim: "/"},

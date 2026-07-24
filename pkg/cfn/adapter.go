@@ -46,7 +46,6 @@ var cfnRoleNames = map[importid.Role]string{
 	importid.RoleType:       "Type",
 	importid.RoleSetID:      "SetIdentifier",
 	importid.RoleStage:      "StageName",
-	importid.RoleAuthorizer: "AuthorizerId",
 	// Composite raw roles for custom composers:
 	importid.RoleScalingTargetID: "ScalingTargetId",
 	importid.RoleEcsID:           "Id",

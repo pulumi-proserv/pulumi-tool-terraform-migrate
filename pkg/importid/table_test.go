@@ -37,7 +37,7 @@ func TestResolverTable(t *testing.T) {
 		{"aws:apigateway/method:Method", "classic", map[Role]string{RoleRestApi: "api", RoleResource: "res", RoleHTTP: "GET"}},
 		{"aws:apigateway/usagePlanKey:UsagePlanKey", "classic", map[Role]string{RoleUsagePlan: "up", RoleKey: "key"}},
 		{"aws:apigateway/stage:Stage", "classic", map[Role]string{RoleRestApi: "api", RoleStage: "prod"}},
-		{"aws:apigateway/authorizer:Authorizer", "classic", map[Role]string{RoleRestApi: "api", RoleAuthorizer: "auth"}},
+		{"aws:apigateway/authorizer:Authorizer", "classic", map[Role]string{RoleRestApi: "api", RoleID: "auth"}},
 		{"aws:cognito/userPoolClient:UserPoolClient", "classic", map[Role]string{RoleUserPool: "pool", RoleID: "client"}},
 		{"aws:ec2/routeTableAssociation:RouteTableAssociation", "classic", map[Role]string{RoleSubnet: "sub", RoleRouteTbl: "rtb"}},
 		{"aws:transfer/user:User", "classic", map[Role]string{RoleServer: "s", RoleUser: "u"}},
