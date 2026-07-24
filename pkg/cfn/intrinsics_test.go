@@ -144,3 +144,83 @@ func TestResolveProperties_NestedPropertyObjectPassthrough(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string]interface{}{"Key": "Name", "Value": "prod"}, got["Tag"])
 }
+
+func TestResolveProperties_DeepNestedResolution(t *testing.T) {
+	t.Parallel()
+	// Intrinsics nested inside arrays/objects (e.g. an IAM policy document or an
+	// environment-variable map) must be resolved, not passed through as raw maps.
+	resources := map[string]string{"Bucket": "my-bucket", "Fn2": "fn-2"}
+	props := map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": []interface{}{
+				map[string]interface{}{
+					"Effect":   "Allow",
+					"Resource": map[string]interface{}{"Ref": "Bucket"}, // nested Ref, inside object, inside array
+				},
+			},
+		},
+		"Environment": map[string]interface{}{
+			"Variables": map[string]interface{}{
+				"FN": map[string]interface{}{"Ref": "Fn2"}, // nested Ref inside object
+			},
+		},
+	}
+	got, err := ResolveProperties(context.Background(), props, resources, nil, nil, fakeCC{})
+	require.NoError(t, err)
+
+	pd := got["PolicyDocument"].(map[string]interface{})
+	stmt := pd["Statement"].([]interface{})[0].(map[string]interface{})
+	require.Equal(t, "my-bucket", stmt["Resource"])
+	require.Equal(t, "Allow", stmt["Effect"])
+
+	env := got["Environment"].(map[string]interface{})["Variables"].(map[string]interface{})
+	require.Equal(t, "fn-2", env["FN"])
+}
+
+func TestResolveProperties_DeepNestedUnresolvedIntrinsic(t *testing.T) {
+	t.Parallel()
+	// An unresolved intrinsic nested at depth is surfaced as the sentinel, so it
+	// can never silently pass through as a raw map.
+	props := map[string]interface{}{
+		"Environment": map[string]interface{}{
+			"Variables": map[string]interface{}{
+				"URL": map[string]interface{}{"Fn::Sub": "https://${AWS::Region}.example.com"},
+			},
+		},
+	}
+	got, err := ResolveProperties(context.Background(), props, nil, nil, nil, fakeCC{})
+	require.NoError(t, err)
+	env := got["Environment"].(map[string]interface{})["Variables"].(map[string]interface{})
+	require.Equal(t, "<unresolved-intrinsic:Fn::Sub>", env["URL"])
+}
+
+// panicCC fails the test if GetResource is ever called — used to prove a nested
+// GetAtt does NOT trigger a Cloud Control call.
+type panicCC struct{ t *testing.T }
+
+func (p panicCC) GetResource(_ context.Context, _, _ string) (map[string]interface{}, error) {
+	p.t.Fatal("Cloud Control GetResource should not be called for a nested Fn::GetAtt")
+	return nil, nil
+}
+
+func TestResolveProperties_NestedGetAttNotResolvedViaCloudControl(t *testing.T) {
+	t.Parallel()
+	// A GetAtt nested inside a policy document must become a marker without any
+	// Cloud Control call (top-level GetAtt is resolved; nested is not — to avoid
+	// one AWS call per occurrence).
+	props := map[string]interface{}{
+		"PolicyDocument": map[string]interface{}{
+			"Statement": []interface{}{
+				map[string]interface{}{
+					"Resource": map[string]interface{}{"Fn::GetAtt": []interface{}{"Bucket", "Arn"}},
+				},
+			},
+		},
+	}
+	got, err := ResolveProperties(context.Background(), props,
+		map[string]string{"Bucket": "my-bucket"}, map[string]string{"Bucket": "AWS::S3::Bucket"}, nil,
+		panicCC{t: t})
+	require.NoError(t, err)
+	stmt := got["PolicyDocument"].(map[string]interface{})["Statement"].([]interface{})[0].(map[string]interface{})
+	require.Equal(t, "<unresolved-intrinsic:Fn::GetAtt>", stmt["Resource"])
+}
