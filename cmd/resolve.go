@@ -16,14 +16,14 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-func newPatchStateCmd() *cobra.Command {
+func newResolveCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "patch-state",
-		Short: "Patch imported state with not_read field values from a Terraform (tf) or CloudFormation (cfn) digest",
+		Use:   "resolve",
+		Short: "Fill a Pulumi import file from a Terraform (tf) or CloudFormation (cfn) digest",
 	}
-	cmd.AddCommand(newPatchStateTfCmd())
-	cmd.AddCommand(newPatchStateCfnCmd())
+	cmd.AddCommand(newResolveTfCmd())
+	cmd.AddCommand(newResolveCfnCmd())
 	return cmd
 }
 
-func init() { rootCmd.AddCommand(newPatchStateCmd()) }
+func init() { rootCmd.AddCommand(newResolveCmd()) }

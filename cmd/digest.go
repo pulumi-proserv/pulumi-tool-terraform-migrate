@@ -16,14 +16,14 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-func newPatchStateCmd() *cobra.Command {
+func newDigestCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "patch-state",
-		Short: "Patch imported state with not_read field values from a Terraform (tf) or CloudFormation (cfn) digest",
+		Use:   "digest",
+		Short: "Produce an agent-safe digest of Terraform state (tf) or a deployed CloudFormation stack (cfn)",
 	}
-	cmd.AddCommand(newPatchStateTfCmd())
-	cmd.AddCommand(newPatchStateCfnCmd())
+	cmd.AddCommand(newDigestTfCmd())
+	cmd.AddCommand(newDigestCfnCmd())
 	return cmd
 }
 
-func init() { rootCmd.AddCommand(newPatchStateCmd()) }
+func init() { rootCmd.AddCommand(newDigestCmd()) }

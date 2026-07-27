@@ -12,18 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cmd
+package cfn
 
-import "github.com/spf13/cobra"
-
-func newPatchStateCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "patch-state",
-		Short: "Patch imported state with not_read field values from a Terraform (tf) or CloudFormation (cfn) digest",
-	}
-	cmd.AddCommand(newPatchStateTfCmd())
-	cmd.AddCommand(newPatchStateCfnCmd())
-	return cmd
-}
-
-func init() { rootCmd.AddCommand(newPatchStateCmd()) }
+var (
+	_ StackReader        = (*cfnStackReader)(nil)
+	_ CloudControlReader = (*ccReader)(nil)
+	_ Lookups            = (*awsLookups)(nil)
+)

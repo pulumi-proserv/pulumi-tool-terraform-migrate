@@ -25,7 +25,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func newImportIDMatchCmd() *cobra.Command {
+// buildImportIDMatchCommand builds the import-id-match (TF resolve) command body.
+// Reused by the hidden `import-id-match` alias and the `resolve tf` subcommand.
+func buildImportIDMatchCommand(use string, hidden bool) *cobra.Command {
 	var digestPath string
 	var importFilePath string
 	var mapFlags []string
@@ -33,8 +35,9 @@ func newImportIDMatchCmd() *cobra.Command {
 	var outPath string
 
 	cmd := &cobra.Command{
-		Use:   "import-id-match",
-		Short: "Fill Pulumi import file IDs by matching TF digest resources to Pulumi components",
+		Use:    use,
+		Hidden: hidden,
+		Short:  "Fill Pulumi import file IDs by matching TF digest resources to Pulumi components",
 		Long: `Match Terraform resources from a tf-digest.json to Pulumi import file
 entries and fill in placeholder import IDs.
 
@@ -103,7 +106,7 @@ Examples:
 				}
 				var mf struct {
 					Modules   map[string]string `yaml:"modules"`
-					Mappings  map[string]string `yaml:"mappings"`  // deprecated alias for modules
+					Mappings  map[string]string `yaml:"mappings"` // deprecated alias for modules
 					Resources map[string]string `yaml:"resources"`
 				}
 				if err := yaml.Unmarshal(mfData, &mf); err != nil {
@@ -173,6 +176,8 @@ Examples:
 
 	return cmd
 }
+
+func newImportIDMatchCmd() *cobra.Command { return buildImportIDMatchCommand("import-id-match", true) } // hidden alias
 
 func init() {
 	rootCmd.AddCommand(newImportIDMatchCmd())

@@ -16,14 +16,6 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-func newPatchStateCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "patch-state",
-		Short: "Patch imported state with not_read field values from a Terraform (tf) or CloudFormation (cfn) digest",
-	}
-	cmd.AddCommand(newPatchStateTfCmd())
-	cmd.AddCommand(newPatchStateCfnCmd())
-	return cmd
-}
-
-func init() { rootCmd.AddCommand(newPatchStateCmd()) }
+// newDigestTfCmd is the `digest tf` subcommand — same body as the hidden
+// tf-digest alias, but visible under the `digest` parent with Use "tf".
+func newDigestTfCmd() *cobra.Command { return buildTfDigestCommand("tf", false) }

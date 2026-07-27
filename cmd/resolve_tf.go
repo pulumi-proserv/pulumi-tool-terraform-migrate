@@ -16,14 +16,6 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-func newPatchStateCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "patch-state",
-		Short: "Patch imported state with not_read field values from a Terraform (tf) or CloudFormation (cfn) digest",
-	}
-	cmd.AddCommand(newPatchStateTfCmd())
-	cmd.AddCommand(newPatchStateCfnCmd())
-	return cmd
-}
-
-func init() { rootCmd.AddCommand(newPatchStateCmd()) }
+// newResolveTfCmd is the `resolve tf` subcommand — same body as the hidden
+// import-id-match alias, visible under `resolve` with Use "tf".
+func newResolveTfCmd() *cobra.Command { return buildImportIDMatchCommand("tf", false) }

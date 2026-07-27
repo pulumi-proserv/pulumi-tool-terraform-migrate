@@ -87,6 +87,18 @@
         "forceDetachPolicies": { "default": false },
         "path": { "default": "/" }
       }
+    },
+    "aws:apigateway/integration:Integration": {
+      "not_read": {
+        "passthroughBehavior": { "default": "WHEN_NO_MATCH" },
+        "timeoutInMillis": { "default": 29000 },
+        "connectionType": { "default": "INTERNET" }
+      }
+    },
+    "aws:apigateway/stage:Stage": {
+      "not_read": {
+        "cacheClusterEnabled": { "default": false }
+      }
     }
   }
 }
