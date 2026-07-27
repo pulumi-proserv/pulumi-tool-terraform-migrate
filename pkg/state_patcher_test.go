@@ -15,6 +15,7 @@
 package pkg
 
 import (
+	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -28,6 +29,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildAssetSentinel_ZipIsFileBased(t *testing.T) {
+	t.Parallel()
+	// A FileArchive pointing at a .zip must patch as a file-based archive
+	// sentinel (archive(file:hash){path}) — matching a program's
+	// FileArchive("x.zip") — NOT an embedded AssetArchive. Both TF and CFN
+	// migrations author FileArchive from a code/filename archive, so the
+	// embedded form would leave a perpetual `code` diff.
+	tmp := t.TempDir()
+	zipPath := filepath.Join(tmp, "code.zip")
+	f, err := os.Create(zipPath)
+	require.NoError(t, err)
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("index.js")
+	require.NoError(t, err)
+	_, err = w.Write([]byte("exports.handler = async () => ({ statusCode: 200 });"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
+
+	sentinel, err := buildAssetSentinel(zipPath, "FileArchive")
+	require.NoError(t, err)
+	require.Equal(t, archiveSig, sentinel[sigKey], "must be an archive sentinel")
+	require.NotEmpty(t, sentinel["hash"], "must carry the archive hash")
+	require.Equal(t, zipPath, sentinel["path"], "file-based: carries the zip path")
+	require.NotContains(t, sentinel, "assets", "must NOT be the embedded AssetArchive form")
+}
 
 func TestNormalizeTFName(t *testing.T) {
 	t.Parallel()

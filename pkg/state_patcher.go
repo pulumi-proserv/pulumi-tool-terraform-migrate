@@ -109,11 +109,6 @@ type patchFieldDescriptor struct {
 	AssetKind              *int
 	ArchiveFormat          *int
 	HashField              string
-	// ZipAsFileArchive: when true, a .zip source is emitted as a file-based
-	// FileArchive sentinel (matching a program's FileArchive("x.zip")); when
-	// false (the TF default) a .zip is emitted as an embedded AssetArchive. Set
-	// only by the CFN patcher — the TF path is unchanged.
-	ZipAsFileArchive bool
 }
 
 // tfToPulumiField maps TF snake_case attribute names to Pulumi camelCase field names
@@ -538,7 +533,7 @@ func patchResourceFields(
 					absPath = filepath.Join(configDir, base)
 				}
 				absPath, _ = filepath.Abs(absPath)
-				sentinel, err := buildAssetSentinel(absPath, fd.AssetType, fd.ZipAsFileArchive)
+				sentinel, err := buildAssetSentinel(absPath, fd.AssetType)
 				if err != nil && fd.AssetType == "FileArchive" && digResource != nil {
 					if fnName, ok := digResource.Attributes["function_name"].(string); ok && fnName != "" {
 						fnArn, _ := digResource.Attributes["arn"].(string)
@@ -878,10 +873,11 @@ const (
 //
 // For FileArchive: tries these in order:
 //  1. Directory (strip .zip) → path-only sentinel, engine computes hash
-//  2. Zip file → extracts contents into an AssetArchive sentinel with
-//     StringAsset text entries for each file. The engine hashes both the
-//     state-side and program-side archives identically.
-func buildAssetSentinel(absPath, assetType string, zipAsFileArchive bool) (map[string]interface{}, error) {
+//  2. Zip file → file-based sentinel archive(file:<hash>){path}, matching a
+//     program's FileArchive("x.zip") (which is what both `pulumi convert` and
+//     hand-authored migrations emit from a TF `filename`). The hash is Pulumi's
+//     own archive hash of the zip, identical to what the program computes.
+func buildAssetSentinel(absPath, assetType string) (map[string]interface{}, error) {
 	if assetType == "FileArchive" {
 		// Try directory first (strip .zip).
 		dirPath := strings.TrimSuffix(absPath, ".zip")
@@ -897,27 +893,22 @@ func buildAssetSentinel(absPath, assetType string, zipAsFileArchive bool) (map[s
 			}, nil
 		}
 
-		// Zip file handling. Two shapes, depending on how the program declares it:
-		//   - zipAsFileArchive (CFN path): file-based FileArchive sentinel
-		//     archive(file:<hash>){path}, matching a program's FileArchive("x.zip").
-		//     The hash is Pulumi's own archive hash of the zip, identical to what
-		//     the program computes, so preview is zero-diff.
-		//   - default (TF path, unchanged): embedded AssetArchive with a
-		//     StringAsset per zip entry, matching AssetArchive({file: StringAsset}).
+		// Zip file → file-based FileArchive sentinel archive(file:<hash>){path}.
+		// Both FileArchive(dir) and FileArchive("x.zip") serialize to this file
+		// form; the embedded-AssetArchive form only matches a program that
+		// authors AssetArchive({name: StringAsset}) directly, which is not what a
+		// TF/CFN migration emits from a `filename`/code archive.
 		if strings.HasSuffix(absPath, ".zip") {
 			if _, err := os.Stat(absPath); err == nil {
-				if zipAsFileArchive {
-					hash, err := hashFileArchive(absPath)
-					if err != nil {
-						return nil, fmt.Errorf("hashing zip %s: %w", absPath, err)
-					}
-					return map[string]interface{}{
-						sigKey: archiveSig,
-						"hash": hash,
-						"path": absPath,
-					}, nil
+				hash, err := hashFileArchive(absPath)
+				if err != nil {
+					return nil, fmt.Errorf("hashing zip %s: %w", absPath, err)
 				}
-				return buildAssetArchiveFromZip(absPath)
+				return map[string]interface{}{
+					sigKey: archiveSig,
+					"hash": hash,
+					"path": absPath,
+				}, nil
 			}
 		}
 
@@ -937,12 +928,10 @@ func buildAssetSentinel(absPath, assetType string, zipAsFileArchive bool) (map[s
 		return nil, fmt.Errorf("archive path not found: %s", absPath)
 	}
 
-	// FileAsset: hash the file contents. This branch is shared by TF and CFN and
-	// is intentionally NOT affected by the FileArchive zip-form scoping above — it
-	// is the path a Terraform `aws_s3_object` `source` (a FileAsset) patches
-	// through (config-dir-relative file + SHA256). Verified unchanged when adding
-	// patch-state cfn; CloudFormation has no S3 object resource type, so CFN
-	// migrations never reach it.
+	// FileAsset: hash the file contents. Shared by TF and CFN — the path a
+	// Terraform `aws_s3_object` `source` (a FileAsset) patches through
+	// (config-dir-relative file + SHA256). CloudFormation has no S3 object
+	// resource type, so CFN migrations don't reach it.
 	f, err := os.Open(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", absPath, err)
