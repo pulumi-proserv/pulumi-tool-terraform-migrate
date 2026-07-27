@@ -15,7 +15,6 @@
 package pkg
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -36,7 +35,6 @@ import (
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/providermap"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	pulumiarchive "github.com/pulumi/pulumi/sdk/v3/go/common/resource/archive"
-	pulumiasset "github.com/pulumi/pulumi/sdk/v3/go/common/resource/asset"
 )
 
 // FieldsFile represents the patch-state fields file.
@@ -535,10 +533,16 @@ func patchResourceFields(
 				absPath, _ = filepath.Abs(absPath)
 				sentinel, err := buildAssetSentinel(absPath, fd.AssetType)
 				if err != nil && fd.AssetType == "FileArchive" && digResource != nil {
+					// Local artifact missing: download the deployed Lambda zip to the
+					// path the program references, so its FileArchive can build too,
+					// then produce the matching file-based sentinel.
 					if fnName, ok := digResource.Attributes["function_name"].(string); ok && fnName != "" {
 						fnArn, _ := digResource.Attributes["arn"].(string)
-						fmt.Fprintf(os.Stderr, "  Downloading Lambda code for %s (%s)...\n", pulumiField, fnName)
-						sentinel, err = downloadLambdaCodeAsArchive(fnName, fnArn)
+						dest, _ := filepath.Abs(filepath.Join(configDir, pathStr))
+						fmt.Fprintf(os.Stderr, "  Downloading Lambda code for %s (%s) to %s...\n", pulumiField, fnName, dest)
+						if derr := DownloadLambdaCodeToFile(context.Background(), fnName, fnArn, "", dest); derr == nil {
+							sentinel, err = buildAssetSentinel(dest, fd.AssetType)
+						}
 					}
 				}
 				if err != nil {
@@ -951,81 +955,6 @@ func buildAssetSentinel(absPath, assetType string) (map[string]interface{}, erro
 	}, nil
 }
 
-// buildAssetArchiveFromZip reads a zip file and constructs an AssetArchive
-// sentinel with StringAsset text entries for each file in the zip.
-// This matches how Pulumi's AssetArchive({"file": StringAsset(content)})
-// is serialized, allowing the engine to hash both sides identically.
-func buildAssetArchiveFromZip(zipPath string) (map[string]interface{}, error) {
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening zip %s: %w", zipPath, err)
-	}
-	defer r.Close()
-
-	assets := make(map[string]interface{})
-	for _, f := range r.File {
-		if f.FileInfo().IsDir() {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return nil, fmt.Errorf("reading %s from zip: %w", f.Name, err)
-		}
-		content, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			return nil, fmt.Errorf("reading %s from zip: %w", f.Name, err)
-		}
-
-		// Compute hash of the individual file.
-		h := sha256.New()
-		h.Write(content)
-		hash := hex.EncodeToString(h.Sum(nil))
-
-		assets[f.Name] = map[string]interface{}{
-			sigKey: assetSig,
-			"hash": hash,
-			"text": string(content),
-		}
-	}
-
-	// Compute overall archive hash using the Pulumi SDK, matching what the
-	// engine computes for AssetArchive({"file": StringAsset(content)}).
-	archiveAssets := make(map[string]interface{})
-	for _, f := range r.File {
-		if f.FileInfo().IsDir() {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			continue
-		}
-		content, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			continue
-		}
-		a, err := pulumiasset.FromText(string(content))
-		if err != nil {
-			continue
-		}
-		archiveAssets[f.Name] = a
-	}
-	arch, err := pulumiarchive.FromAssets(archiveAssets)
-	if err != nil {
-		return nil, fmt.Errorf("creating archive for hash: %w", err)
-	}
-	if err := arch.EnsureHash(); err != nil {
-		return nil, fmt.Errorf("computing archive hash: %w", err)
-	}
-
-	return map[string]interface{}{
-		sigKey:   archiveSig,
-		"hash":   arch.Hash,
-		"assets": assets,
-	}, nil
-}
-
 // lambdaCodeLocation calls Lambda GetFunction and returns the presigned
 // download URL for the function's deployed code. The region is extracted
 // from the function ARN (arn:aws:lambda:REGION:...) when provided.
@@ -1068,40 +997,6 @@ func lambdaCodeLocation(ctx context.Context, functionName, arn, fallbackRegion s
 	}
 
 	return *result.Code.Location, nil
-}
-
-// downloadLambdaCodeAsArchive downloads a Lambda function's deployed code from AWS,
-// extracts the zip, and constructs an AssetArchive sentinel with StringAsset entries.
-// The region is extracted from the function ARN (arn:aws:lambda:REGION:...).
-func downloadLambdaCodeAsArchive(functionName, arn string) (map[string]interface{}, error) {
-	ctx := context.Background()
-
-	location, err := lambdaCodeLocation(ctx, functionName, arn, "")
-	if err != nil {
-		return nil, err
-	}
-
-	// Download the zip from the presigned URL.
-	resp, err := http.Get(location)
-	if err != nil {
-		return nil, fmt.Errorf("downloading code for %s: %w", functionName, err)
-	}
-	defer resp.Body.Close()
-
-	// Write to temp file (zip.OpenReader needs a file).
-	tmpFile, err := os.CreateTemp("", "lambda-code-*.zip")
-	if err != nil {
-		return nil, fmt.Errorf("creating temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		return nil, fmt.Errorf("writing code zip: %w", err)
-	}
-	tmpFile.Close()
-
-	return buildAssetArchiveFromZip(tmpFile.Name())
 }
 
 // DownloadLambdaCodeToFile downloads a Lambda function's deployed code zip
