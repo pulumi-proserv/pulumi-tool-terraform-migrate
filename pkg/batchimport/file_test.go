@@ -64,7 +64,7 @@ func TestLoadImportFile_Errors(t *testing.T) {
 	t.Parallel()
 
 	_, err := LoadImportFile(filepath.Join(t.TempDir(), "missing.json"))
-	require.Error(t, err)
+	require.ErrorContains(t, err, "reading import file")
 
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "bad.json")

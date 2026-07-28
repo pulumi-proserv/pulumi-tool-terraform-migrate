@@ -1,6 +1,6 @@
 # Batch Import Command Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the `batch-import.bb` babashka script with a `pulumi-tool-terraform-migrate import` command that batches a prepared import file, isolates per-resource failures, and reports every bad import ID in a single pass.
 
@@ -32,7 +32,7 @@
 - Consumes: nothing.
 - Produces: `type ResourceKey struct { Type, Name string }`; `func ParseURN(urn string) (ResourceKey, bool)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `pkg/batchimport/key_test.go` (license header first):
 
@@ -104,12 +104,12 @@ func TestParseURN(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./pkg/batchimport/ -run TestParseURN -v`
 Expected: FAIL — build error, `undefined: ResourceKey` and `undefined: ParseURN`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `pkg/batchimport/key.go` (license header first):
 
@@ -150,12 +150,12 @@ func ParseURN(urn string) (ResourceKey, bool) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./pkg/batchimport/ -run TestParseURN -v`
 Expected: PASS, 7 subtests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/batchimport/key.go pkg/batchimport/key_test.go
@@ -176,7 +176,7 @@ git commit -m "feat(batchimport): add ResourceKey and URN parsing"
 
 **Why not `pkg.ImportFile`:** `pkg.ImportEntry` has 7 fields; `optimport.ImportResource` has 11, adding `logicalName`, `pluginDownloadUrl`, `properties`, and `remote`. Decoding through `pkg.ImportFile` would silently drop those. `pkg.ImportFile` stays untouched for `import-id-match`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `pkg/batchimport/file_test.go` (license header first):
 
@@ -251,12 +251,12 @@ func TestKeyOf(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./pkg/batchimport/ -run 'TestLoadImportFile|TestKeyOf' -v`
 Expected: FAIL — `undefined: LoadImportFile`, `undefined: keyOf`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `pkg/batchimport/file.go` (license header first):
 
@@ -298,12 +298,12 @@ func keyOf(r *optimport.ImportResource) ResourceKey {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./pkg/batchimport/ -run 'TestLoadImportFile|TestKeyOf' -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/batchimport/file.go pkg/batchimport/file_test.go
@@ -323,7 +323,7 @@ git commit -m "feat(batchimport): add lossless import file model"
 - Consumes: `ResourceKey`, `ParseURN` (Task 1); `ImportFile`, `keyOf` (Task 2).
 - Produces: `type Importer interface`; `type Failure struct`; `type Result struct`; `type Options struct`; `const DefaultBatchSize = 100`; `func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Result, error)`; and the test-only `fakeImporter`.
 
-- [ ] **Step 1: Write the fake**
+- [x] **Step 1: Write the fake**
 
 Create `pkg/batchimport/fake_test.go` (license header first):
 
@@ -415,7 +415,7 @@ func (f *fakeImporter) nonComponentPayloads() [][]ResourceKey {
 
 Note: the fake writes resources to state even on a partially failing batch. Real `pulumi import` is closer to all-or-nothing per batch, but modelling partial success is strictly harder for `Run` to handle correctly, and Task 5 covers the all-or-nothing case explicitly.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `pkg/batchimport/run_test.go` (license header first):
 
@@ -500,12 +500,12 @@ func TestRun_BatchSizeDefaults(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `go test ./pkg/batchimport/ -run TestRun -v`
 Expected: FAIL — `undefined: Run`, `undefined: Options`.
 
-- [ ] **Step 4: Write minimal implementation**
+- [x] **Step 4: Write minimal implementation**
 
 Create `pkg/batchimport/run.go` (license header first):
 
@@ -618,12 +618,12 @@ func withComponents(
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `go test ./pkg/batchimport/ -run TestRun -v`
 Expected: PASS — 3 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pkg/batchimport/run.go pkg/batchimport/run_test.go pkg/batchimport/fake_test.go
@@ -642,7 +642,7 @@ git commit -m "feat(batchimport): add batching loop with state-verified success"
 - Consumes: everything from Task 3.
 - Produces: no new exported names; `Options.Resume` and `Options.DryRun` become functional, `Result.Skipped` becomes populated.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `pkg/batchimport/run_test.go`:
 
@@ -723,12 +723,12 @@ func TestRun_DryRunImportsNothing(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./pkg/batchimport/ -run TestRun -v`
 Expected: FAIL — `TestRun_ResumeSkipsResourcesAlreadyInState` fails with `res.Skipped` empty; `TestRun_DryRunImportsNothing` fails with `f.callCount` = 1.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `pkg/batchimport/run.go`, replace the block from `for _, r := range importable {` (the `res.Planned` loop) through `res.BatchCount = ...` with:
 
@@ -760,12 +760,12 @@ In `pkg/batchimport/run.go`, replace the block from `for _, r := range importabl
 	}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./pkg/batchimport/ -v`
 Expected: PASS — all tests from Tasks 1-4.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/batchimport/run.go pkg/batchimport/run_test.go
@@ -784,7 +784,7 @@ git commit -m "feat(batchimport): add resume filtering and dry run"
 - Consumes: everything from Tasks 3-4.
 - Produces: `Result.Failed` becomes populated; `func errText(isolationErr, batchErr error) string`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `pkg/batchimport/run_test.go`:
 
@@ -886,12 +886,12 @@ func TestErrText(t *testing.T) {
 
 Add `"errors"` to the test file's import block.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./pkg/batchimport/ -run 'TestRun_Isolates|TestRun_Succeeds|TestErrText' -v`
 Expected: FAIL — `undefined: errText`, and `res.Failed` empty in the isolation tests.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `pkg/batchimport/run.go`, replace the batch body — from the `_ = imp.ImportBatch(...)` line through the closing brace of the `for _, r := range batch` loop — with:
 
@@ -960,12 +960,12 @@ func errText(isolationErr, batchErr error) string {
 }
 ```
 
-- [ ] **Step 4: Run the full package test suite**
+- [x] **Step 4: Run the full package test suite**
 
 Run: `go test ./pkg/batchimport/ -v`
 Expected: PASS — every test from Tasks 1-5.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/batchimport/run.go pkg/batchimport/run_test.go
@@ -986,7 +986,7 @@ git commit -m "feat(batchimport): isolate per-resource failures and tolerate SDK
 
 The adapter itself is thin and needs a live stack, so only its deployment parsing is unit-tested. Note the shape: `stack.Export` returns an `apitype.UntypedDeployment` whose `.Deployment` field is *already* the inner object (`{"resources": [...]}`) — unlike an exported state *file*, which wraps it in `{"deployment": {...}}`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `pkg/batchimport/stack_test.go` (license header first):
 
@@ -1034,12 +1034,12 @@ func TestResourceKeysFromDeployment_EmptyAndInvalid(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./pkg/batchimport/ -run TestResourceKeysFromDeployment -v`
 Expected: FAIL — `undefined: resourceKeysFromDeployment`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `pkg/batchimport/stack.go` (license header first):
 
@@ -1128,17 +1128,17 @@ func resourceKeysFromDeployment(raw []byte) (map[ResourceKey]bool, error) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./pkg/batchimport/ -v`
 Expected: PASS.
 
-- [ ] **Step 5: Verify the interface is satisfied**
+- [x] **Step 5: Verify the interface is satisfied**
 
 Run: `go build ./...`
 Expected: no output. (`NewStackImporter` returns `Importer`, so a missing method is a compile error.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pkg/batchimport/stack.go pkg/batchimport/stack_test.go
@@ -1157,7 +1157,7 @@ git commit -m "feat(batchimport): add Automation API stack adapter"
 - Consumes: `batchimport.LoadImportFile`, `NewStackImporter`, `Run`, `Options`, `Result`, `Failure`, `DefaultBatchSize`.
 - Produces: `func newImportCmd() *cobra.Command`; `func formatResult(res *batchimport.Result, dryRun bool) string`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `cmd/import_test.go` (license header first):
 
@@ -1240,12 +1240,12 @@ func TestNewImportCmd_Flags(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/ -run 'TestFormatResult|TestNewImportCmd' -v`
 Expected: FAIL — `undefined: formatResult`, `undefined: newImportCmd`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `cmd/import.go` (license header first):
 
@@ -1387,17 +1387,17 @@ func formatResult(res *batchimport.Result, dryRun bool) string {
 func init() { rootCmd.AddCommand(newImportCmd()) }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./cmd/ -run 'TestFormatResult|TestNewImportCmd' -v`
 Expected: PASS — 4 tests.
 
-- [ ] **Step 5: Verify the command is registered**
+- [x] **Step 5: Verify the command is registered**
 
 Run: `go run . import --help`
 Expected: the long help text above, listing all six flags.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/import.go cmd/import_test.go
@@ -1418,13 +1418,13 @@ git commit -m "feat(cmd): add import command backed by pkg/batchimport"
 - Consumes: the `import` command from Task 7.
 - Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Delete the script and its now-empty directory**
+- [x] **Step 1: Delete the script and its now-empty directory**
 
 ```bash
 git rm skills/pulumi-terraform-workspace-migration/scripts/batch-import.bb
 ```
 
-- [ ] **Step 2: Replace the "Bundled scripts" section in SKILL.md**
+- [x] **Step 2: Replace the "Bundled scripts" section in SKILL.md**
 
 The section currently reads:
 
@@ -1439,7 +1439,7 @@ See `references/import-mechanics.md`.
 
 Delete it entirely — the skill no longer bundles scripts.
 
-- [ ] **Step 3: Replace the batching instructions in `references/import-mechanics.md`**
+- [x] **Step 3: Replace the batching instructions in `references/import-mechanics.md`**
 
 Replace everything from `For larger stacks, batch it.` through the closing fence of the third `bb scripts/batch-import.bb` block with:
 
@@ -1472,7 +1472,7 @@ after a *successful* import whenever code generation is off) is mistaken for a
 failure.
 ````
 
-- [ ] **Step 4: Update the README**
+- [x] **Step 4: Update the README**
 
 In the skills table, change the `pulumi-terraform-workspace-migration` row's trailing sentence from `Bundles \`batch-import.bb\`.` to `Uses the \`import\` command for batched, failure-isolating imports.`
 
@@ -1482,17 +1482,17 @@ In the bullet list of commands near the top, add after the `patch-state` bullet:
 - **`import`** — Imports a prepared import file in batches, isolating per-resource failures so one run reports every bad import ID
 ```
 
-- [ ] **Step 5: Verify no stale references remain**
+- [x] **Step 5: Verify no stale references remain**
 
 Run: `grep -rn "batch-import" skills/ README.md docs/superpowers/skills/ ; echo "exit=$?"`
 Expected: no matches from `skills/` or `README.md` (`exit=1`). Matches inside `docs/superpowers/specs/` and `docs/superpowers/plans/` are expected — those are historical documents.
 
-- [ ] **Step 6: Verify the whole build and suite still pass**
+- [x] **Step 6: Verify the whole build and suite still pass**
 
 Run: `go build ./... && go test ./...`
 Expected: all packages `ok`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A skills README.md
@@ -1505,11 +1505,11 @@ git commit -m "docs: replace batch-import script with the import command"
 
 After Task 8, confirm end to end against a real stack — this is the only step that exercises `stackImporter`, which has no unit test:
 
-- [ ] On a scratch Pulumi project with at least one importable resource and a prepared import file, run `import --dry-run` and confirm the plan matches the file.
-- [ ] Run `import` and confirm: resources land, the summary reports them as imported, and **the exit code is 0** despite the SDK's generated-code error. A non-zero exit here means the state-verification path is not working.
-- [ ] Re-run the same command and confirm every resource is reported as skipped and no import is attempted.
-- [ ] Corrupt one import ID in the file, remove that resource from state (`pulumi state delete`), re-run, and confirm the resource is named in the FAILED RESOURCES table with a non-zero exit while the others still import.
+- [x] On a scratch Pulumi project with at least one importable resource and a prepared import file, run `import --dry-run` and confirm the plan matches the file.
+- [x] Run `import` and confirm: resources land, the summary reports them as imported, and **the exit code is 0** despite the SDK's generated-code error. A non-zero exit here means the state-verification path is not working.
+- [x] Re-run the same command and confirm every resource is reported as skipped and no import is attempted.
+- [x] Corrupt one import ID in the file, remove that resource from state (`pulumi state delete`), re-run, and confirm the resource is named in the FAILED RESOURCES table with a non-zero exit while the others still import.
 
 ## Follow-up (not blocking)
 
-- [ ] File an issue against `pulumi/pulumi`: `auto.Stack.ImportResources` returns `failed to read generated code` after a successful import when `optimport.GenerateCode(false)` is set, because `--out` is only passed in the code-generation branch while the read is unconditional (`sdk/go/auto/stack.go`, verified in v3.222.0, v3.233.0, v3.246.0). Include the three-line reproduction and note that the workaround — verifying against stack state — is what `pkg/batchimport` does.
+- [x] File an issue against `pulumi/pulumi`: `auto.Stack.ImportResources` returns `failed to read generated code` after a successful import when `optimport.GenerateCode(false)` is set, because `--out` is only passed in the code-generation branch while the read is unconditional (`sdk/go/auto/stack.go`, verified in v3.222.0, v3.233.0, v3.246.0). Include the three-line reproduction and note that the workaround — verifying against stack state — is what `pkg/batchimport` does.

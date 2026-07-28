@@ -62,6 +62,13 @@ func TestParseURN(t *testing.T) {
 			},
 			ok: true,
 		},
+		{
+			name:     "dollar sign inside resource name",
+			urn:      "urn:pulumi:dev::proj::aws:s3/bucket:Bucket::my$bucket",
+			expected: ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "my$bucket"},
+			ok:       true,
+		},
+		{name: "trailing dollar sign in typePath", urn: "urn:pulumi:dev::proj::aws:s3/bucket:Bucket$::b1", ok: false},
 		{name: "too few segments", urn: "urn:pulumi:dev::proj", ok: false},
 		{name: "empty", urn: "", ok: false},
 	}

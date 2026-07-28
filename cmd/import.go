@@ -69,6 +69,10 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
+			if batchSize <= 0 {
+				return fmt.Errorf("--batch-size must be positive, got %d", batchSize)
+			}
+
 			file, err := batchimport.LoadImportFile(filePath)
 			if err != nil {
 				return err

@@ -99,17 +99,29 @@ type Failure struct {
 }
 
 type Result struct {
-    Imported []ResourceKey
-    Skipped  []ResourceKey // already in state (resume)
-    Failed   []Failure
+    Imported   []ResourceKey
+    Skipped    []ResourceKey // already in state (resume)
+    Failed     []Failure
+    Planned    []ResourceKey // every resource that would be imported (dry-run and real runs)
+    BatchCount int
 }
 
 type Options struct {
-    BatchSize int  // default 100
-    Resume    bool // default true
+    BatchSize int       // default 100
+    Resume    bool      // NOT defaulted by this struct; the CLI defaults it via --no-resume
     DryRun    bool
+    Progress  io.Writer // per-batch progress; nil emits nothing
 }
+```
 
+**Progress output.** When `Options.Progress` is set, `Run` writes a line before
+each batch (`Batch <i>/<N> (<n> resources)`) and, when a batch has failures to
+isolate, a line before the isolation pass (`  isolating <n> failure(s)`). The
+CLI wires this to `cmd.ErrOrStderr()` so progress goes to stderr while the
+end-of-run report goes to stdout — satisfying the "per-batch progress to
+stderr, then a summary" requirement above.
+
+```go
 // ImportFile is batchimport's own file model, deliberately NOT pkg.ImportFile.
 type ImportFile struct {
     NameTable map[string]string           `json:"nameTable,omitempty"`

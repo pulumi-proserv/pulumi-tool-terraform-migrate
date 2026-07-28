@@ -53,8 +53,13 @@ type Result struct {
 // Options configures a run.
 type Options struct {
 	BatchSize int
-	Resume    bool
-	DryRun    bool
+	// Resume, when true, skips resources already present in stack state. It is
+	// documented in the design spec as defaulting to true, but this struct
+	// does NOT apply that default — unlike BatchSize, Go's zero value (false)
+	// is used as-is. Only the CLI inverts its --no-resume flag to produce
+	// true by default; a direct caller passing Options{} gets no-resume.
+	Resume bool
+	DryRun bool
 	// Progress, when non-nil, receives per-batch progress messages as the run
 	// proceeds. When nil, no progress is emitted.
 	Progress io.Writer
@@ -82,12 +87,12 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 		importable = append(importable, r)
 	}
 
-	existing, err := imp.ExistingResources(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading stack state: %w", err)
-	}
-
 	if opts.Resume {
+		existing, err := imp.ExistingResources(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("reading stack state: %w", err)
+		}
+
 		remaining := importable[:0:0]
 		for _, r := range importable {
 			if existing[keyOf(r)] {

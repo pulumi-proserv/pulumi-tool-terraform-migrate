@@ -325,6 +325,21 @@ func TestRun_ReportsPerBatchProgress(t *testing.T) {
 	assert.Contains(t, out, "isolating 1 failure(s)")
 }
 
+func TestRun_ComponentsOnlyImportsNothing(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	res, err := Run(context.Background(), f, testFile(0), Options{BatchSize: 2, Resume: true})
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, res.BatchCount)
+	assert.Empty(t, res.Imported)
+	assert.Empty(t, res.Skipped)
+	assert.Empty(t, res.Failed)
+	assert.Empty(t, res.Planned)
+	assert.Equal(t, 0, f.callCount, "no ImportBatch calls when there is nothing importable")
+}
+
 func TestErrText(t *testing.T) {
 	t.Parallel()
 

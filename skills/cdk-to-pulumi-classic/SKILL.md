@@ -139,6 +139,10 @@ For each node, in dependency order (roots → downstream):
    **cdk-construct-to-component**), with the logical ID as the child name suffix.
 2. Fill this node's import IDs with `resolve cfn` (Phase 4).
 3. `pulumi import --file <ready>.json --generate-code=false --protect=false --yes`
+   For a larger node (many resources), use the tool's `import` command instead
+   — it consumes the same `<ready>.json` `resolve cfn` produces, batches it,
+   and re-imports individually to isolate any resource whose ID is bad:
+   `pulumi plugin run terraform-migrate -- import --file <ready>.json --project-dir . --stack <stack> --batch-size 100`
 4. `pulumi preview --diff` targeted at this node.
 5. Classify each diff and fix it; **drive to zero real diffs before the next node.**
 

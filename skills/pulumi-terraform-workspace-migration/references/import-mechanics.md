@@ -127,8 +127,13 @@ When TF uses multiple provider aliases (e.g. `aws` and `aws.useast2`):
 For small stacks (< ~100 resources):
 
 ```bash
-pulumi import --file .import/imports-ready.json --yes
+pulumi import --file .import/imports-ready.json --yes --protect=false --generate-code=false
 ```
+
+Both flags are required: `--protect` defaults to true, so omitting it leaves
+every imported resource protected and produces a permanent `~protect` diff on
+every subsequent preview; `--generate-code=false` matches the hand-authored
+migration workflow, which explicitly forbids generated code.
 
 For larger stacks, use the tool's `import` command. It batches the file, puts
 **all** `component: true` entries in every batch so parent references resolve,

@@ -22,7 +22,9 @@ import "strings"
 // ResourceKey identifies a resource independently of the stack and project
 // segments of its URN. Resources are matched on type AND name: several Pulumi
 // resources can legitimately share a name when they derive it from one source
-// logical ID, so name alone conflates them.
+// logical ID, so name alone conflates them. Consequently, an import file that
+// contains two entries with identical type AND name is treated as a single
+// resource: they share a ResourceKey, so state has only one slot to land in.
 type ResourceKey struct {
 	Type string
 	Name string
@@ -32,6 +34,11 @@ type ResourceKey struct {
 // urn:pulumi:<stack>::<project>::<typePath>::<name>, where <typePath> is
 // parentType$childType for parented resources. It reports false for a URN with
 // too few segments.
+//
+// The split is capped at 4 fields deliberately: a resource name may itself
+// contain "::" (e.g. copied from a source that embeds separators), so the
+// name segment — the last field — must capture everything after the third
+// "::" rather than being split further.
 func ParseURN(urn string) (ResourceKey, bool) {
 	parts := strings.SplitN(urn, "::", 4)
 	if len(parts) < 4 {

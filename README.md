@@ -112,7 +112,7 @@ resource imports from Terraform state. The end-to-end flow looks like this:
                                     │
                                     ▼
                         ┌───────────────────────┐
-                        │  pulumi import        │
+                        │  import               │
                         │  --file filled-       │
                         │  import.json          │
                         └───────────────────────┘
@@ -144,8 +144,10 @@ pulumi plugin run terraform-migrate -- import-id-match \
   --map 'module.lambda_vpc["mysvc"]=lambda_vpc-mysvc' \
   --out filled-import.json
 
-# 4. Import resources into the Pulumi stack
-pulumi import --file filled-import.json
+# 4. Import resources into the Pulumi stack, in batches, isolating failures
+pulumi plugin run terraform-migrate -- import \
+  --file filled-import.json \
+  --project-dir . --stack dev
 ```
 
 ---
