@@ -1339,7 +1339,9 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&filePath, "file", "", "Prepared import file (from `resolve` / `import-id-match`)")
+	// No backticks in usage strings: pflag's UnquoteUsage treats the first
+	// backquoted word as the flag's type placeholder.
+	cmd.Flags().StringVar(&filePath, "file", "", "Prepared import file (from the resolve or import-id-match command)")
 	cmd.Flags().StringVar(&projectDir, "project-dir", ".", "Pulumi project directory")
 	cmd.Flags().StringVar(&stack, "stack", "", "Pulumi stack name")
 	cmd.Flags().IntVar(&batchSize, "batch-size", batchimport.DefaultBatchSize, "Resources per batch")
