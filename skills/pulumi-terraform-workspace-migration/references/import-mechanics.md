@@ -130,37 +130,32 @@ For small stacks (< ~100 resources):
 pulumi import --file .import/imports-ready.json --yes
 ```
 
-For larger stacks, batch it. **Every batch must contain all `component: true`
-entries** alongside its slice of importable resources, or children fail with
-`has no entry in 'nameTable'`. `scripts/batch-import.bb` does this:
+For larger stacks, use the tool's `import` command. It batches the file, puts
+**all** `component: true` entries in every batch so parent references resolve,
+and — when a batch does not fully land — re-imports that batch's resources
+individually to identify exactly which import IDs are bad:
 
 ```bash
-# Generate batch files (dry run — inspect first)
-bb scripts/batch-import.bb \
-  --import-file .import/imports-ready.json \
-  --stack <stack-name> \
-  --batch-size 100 \
-  --out-dir .import/batches
+# Inspect the plan first
+pulumi plugin run terraform-migrate -- import \
+  --file .import/imports-ready.json \
+  --project-dir . --stack <stack-name> --dry-run
 
-# Run the imports (add --esc-env <env> to wrap each in `pulumi env run`)
-bb scripts/batch-import.bb \
-  --import-file .import/imports-ready.json \
-  --stack <stack-name> \
-  --batch-size 100 \
-  --out-dir .import/batches \
-  --run
-
-# After fixing a failure, resume (skips resources already in state)
-bb scripts/batch-import.bb \
-  --import-file .import/imports-ready.json \
-  --stack <stack-name> \
-  --out-dir .import/batches \
-  --run --resume
+# Import (wrap in `pulumi env run <esc-env> --` if you use ESC for credentials)
+pulumi plugin run terraform-migrate -- import \
+  --file .import/imports-ready.json \
+  --project-dir . --stack <stack-name> --batch-size 100
 ```
 
-The import may print `error: parse resource provider reference: expected '::' in
-provider reference ''`. It is cosmetic and does not affect the import — the
-script detects and ignores it. Verify the resource count with `pulumi stack`.
+The run ends with a summary and, if anything failed, a table naming each failed
+resource, the import ID attempted, and the error. Fix those IDs and re-run:
+resources already in state are skipped automatically (`--no-resume` disables it).
+
+Success is determined by reading stack state, not by the importer's exit status,
+so neither the cosmetic `parse resource provider reference` message nor the
+Automation API's spurious `failed to read generated code` error (which it returns
+after a *successful* import whenever code generation is off) is mistaken for a
+failure.
 
 Then run `pulumi preview --diff` and classify what comes back — see
 `diff-taxonomy.md` and `patch-state.md`.

@@ -5,6 +5,7 @@ This is a fork of `pulumi/pulumi-tool-terraform-migrate` that extends the tool w
 - **`tf-digest`** — Digests TF sources + state into an agent-safe JSON sidecar, auto-discovers secrets, and sets them as Pulumi stack config
 - **`import-id-match`** — Fills `pulumi preview --import-file` skeleton with import IDs from the digest, matching TF modules to Pulumi components via mappings
 - **`patch-state`** — Patches imported Pulumi state with field values the cloud API doesn't return (write-only fields, IaC-only defaults, asset sentinels), eliminating post-import diffs
+- **`import`** — Imports a prepared import file in batches, isolating per-resource failures so one run reports every bad import ID
 - **`set-secrets`** — Extracts specific secret values from TF state and sets them as Pulumi config secrets
 
 These commands are designed to work together in a pipeline: `tf-digest` → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview.
@@ -72,7 +73,7 @@ skills from):
 
 | Skill | Purpose |
 |---|---|
-| `pulumi-terraform-workspace-migration` | Orchestrates a full Terraform workspace migration: `tf-digest` → components → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview → staged first `up`. Bundles `batch-import.bb`. |
+| `pulumi-terraform-workspace-migration` | Orchestrates a full Terraform workspace migration: `tf-digest` → components → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview → staged first `up`. Uses the `import` command for batched, failure-isolating imports. |
 | `pulumi-terraform-module-to-component` | Converts a single Terraform module into a Pulumi ComponentResource, including the logical-naming rule `import-id-match` depends on. |
 | `cdk-to-pulumi-classic` | Migrates a deployed CDK app / CloudFormation stack to hand-authored Pulumi on the classic provider, via `digest cfn` / `resolve cfn` / `patch-state cfn`. |
 | `cdk-construct-to-component` | Converts CDK constructs into Pulumi ComponentResources for that migration. |

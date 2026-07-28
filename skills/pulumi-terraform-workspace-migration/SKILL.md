@@ -365,13 +365,6 @@ The PR carries the component changes, the program and stack configs, the ESC
 environment definitions, and a written record of every TF-drift decision and the
 remaining diff counts.
 
-## Bundled scripts
-
-**`scripts/batch-import.bb`** (requires [babashka](https://babashka.org)) —
-splits a prepared import file into batches and imports them sequentially, putting
-**all** `component: true` entries in every batch so parent references resolve.
-See `references/import-mechanics.md`.
-
 ## Troubleshooting
 
 | Issue | Solution |
