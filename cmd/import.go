@@ -85,10 +85,16 @@ Examples:
 				DryRun:    dryRun,
 			})
 			if err != nil {
+				if res != nil {
+					// Show the operator what was identified before the
+					// failure; still return the error so the exit code is
+					// non-zero.
+					_, _ = fmt.Fprint(cmd.OutOrStdout(), formatResult(res, dryRun))
+				}
 				return err
 			}
 
-			fmt.Fprint(cmd.OutOrStdout(), formatResult(res, dryRun))
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), formatResult(res, dryRun))
 
 			if len(res.Failed) > 0 {
 				// The printed report is the useful output, so suppress cobra's

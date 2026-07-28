@@ -36,10 +36,16 @@ type fakeImporter struct {
 	failInBatchOnly map[ResourceKey]bool
 	batchErr        error
 
+	// failExistingAfter, when nonzero, makes the Nth call to ExistingResources
+	// (1-based) fail, simulating a transient export failure mid-run. 0 means
+	// never fail.
+	failExistingAfter int
+
 	// recorded for assertions
-	payloads  [][]*optimport.ImportResource
-	nameTable map[string]string
-	callCount int
+	payloads          [][]*optimport.ImportResource
+	nameTable         map[string]string
+	callCount         int
+	existingCallCount int
 }
 
 func newFakeImporter() *fakeImporter {
@@ -92,6 +98,11 @@ func (f *fakeImporter) ImportBatch(
 }
 
 func (f *fakeImporter) ExistingResources(_ context.Context) (map[ResourceKey]bool, error) {
+	f.existingCallCount++
+	if f.failExistingAfter != 0 && f.existingCallCount == f.failExistingAfter {
+		return nil, errors.New("transient export failure")
+	}
+
 	out := make(map[ResourceKey]bool, len(f.state))
 	for k, v := range f.state {
 		out[k] = v

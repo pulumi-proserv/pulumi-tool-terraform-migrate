@@ -113,7 +113,7 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 
 		after, err := imp.ExistingResources(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("reading stack state after batch: %w", err)
+			return res, fmt.Errorf("reading stack state after batch: %w", err)
 		}
 
 		var missing []*optimport.ImportResource
@@ -137,7 +137,7 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 		if len(missing) > 0 {
 			afterIso, err := imp.ExistingResources(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("reading stack state after isolating failures: %w", err)
+				return res, fmt.Errorf("reading stack state after isolating failures: %w", err)
 			}
 			for _, r := range missing {
 				if afterIso[keyOf(r)] {

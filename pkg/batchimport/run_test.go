@@ -284,6 +284,25 @@ func TestRun_ContinuesToLaterBatchesAfterAFailure(t *testing.T) {
 	assert.Len(t, res.Imported, 3, "batches after the failure still run")
 }
 
+func TestRun_PreservesPartialResultsWhenStateReadFails(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	// Call 1 is the pre-loop ExistingResources; call 2 is the after-batch-1
+	// read (batch 1 succeeds fully); call 3 is the after-batch-2 read, which
+	// we fail here to simulate a transient export failure mid-run.
+	f.failExistingAfter = 3
+
+	res, err := Run(context.Background(), f, testFile(4), Options{BatchSize: 2, Resume: true})
+
+	require.Error(t, err)
+	require.NotNil(t, res, "partial results must survive a mid-run state read failure")
+	assert.ElementsMatch(t, []ResourceKey{
+		{Type: "aws:s3/bucket:Bucket", Name: "res-0"},
+		{Type: "aws:s3/bucket:Bucket", Name: "res-1"},
+	}, res.Imported, "the first batch's results must be preserved")
+}
+
 func TestErrText(t *testing.T) {
 	t.Parallel()
 
