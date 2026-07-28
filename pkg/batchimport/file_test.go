@@ -35,7 +35,7 @@ func TestLoadImportFile_PreservesAllFields(t *testing.T) {
     {"type": "example:index:Vpc", "name": "vpc", "component": true},
     {"type": "aws:ec2/vpc:Vpc", "name": "vpc-main", "id": "vpc-abc123",
      "parent": "vpc", "logicalName": "mainVpc", "properties": ["cidrBlock"],
-     "version": "7.0.0", "pluginDownloadUrl": "https://example.invalid"}
+     "version": "7.0.0", "pluginDownloadUrl": "https://example.invalid", "remote": true}
   ]
 }`
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
@@ -57,6 +57,7 @@ func TestLoadImportFile_PreservesAllFields(t *testing.T) {
 	assert.Equal(t, []string{"cidrBlock"}, r.Properties)
 	assert.Equal(t, "7.0.0", r.Version)
 	assert.Equal(t, "https://example.invalid", r.PluginDownloadURL)
+	assert.True(t, r.Remote)
 }
 
 func TestLoadImportFile_Errors(t *testing.T) {
