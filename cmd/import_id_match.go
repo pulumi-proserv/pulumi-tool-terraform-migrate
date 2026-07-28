@@ -57,8 +57,8 @@ Examples:
   pulumi-terraform-migrate import-id-match \
     --digest tf-digest.json \
     --import-file import.json \
-    --map 'module.caas_rds=caas_rds' \
-    --map 'module.capture_ui["dmvhm"]=capture_ui["dmvhm"]' \
+    --map 'module.core_rds=core_rds' \
+    --map 'module.console_ui["mysvc"]=console_ui["mysvc"]' \
     --out filled-import.json
 
   # Using a mapping file (supports both module and resource mappings)
@@ -70,7 +70,7 @@ Examples:
 
   # Mapping file format:
   #   modules:
-  #     "module.caas_rds": "caas_rds"
+  #     "module.core_rds": "core_rds"
   #   resources:
   #     "aws_s3_bucket.my_bucket": "my_bucket"
 `,

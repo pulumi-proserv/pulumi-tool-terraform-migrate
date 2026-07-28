@@ -39,9 +39,9 @@ func TestCfnGetter_FunctionArnNormalized(t *testing.T) {
 	// the imported `function` state must use the BARE name, or a program emitting
 	// `function: fn.name` diffs and replaces (function is ForceNew).
 	get := CfnGetter(map[string]interface{}{
-		"FunctionName": "arn:aws:lambda:us-east-1:133762716682:function:dmvhm-capture-service-cs-develop-auth-lambda",
+		"FunctionName": "arn:aws:lambda:us-east-1:133762716682:function:mysvc-console-service-cs-develop-auth-lambda",
 	})
-	require.Equal(t, "dmvhm-capture-service-cs-develop-auth-lambda", get(importid.RoleFunction))
+	require.Equal(t, "mysvc-console-service-cs-develop-auth-lambda", get(importid.RoleFunction))
 
 	// A qualified ARN (…:function:NAME:VERSION) still yields the bare name.
 	getQ := CfnGetter(map[string]interface{}{

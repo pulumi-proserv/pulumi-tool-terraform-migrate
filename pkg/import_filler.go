@@ -47,7 +47,7 @@ type FillResult struct {
 // FillImportFile matches TF resources from a digest to Pulumi import file entries
 // and fills in placeholder import IDs. It modifies importFile in place.
 //
-// moduleMappings maps TF module paths to Pulumi component names (e.g., "module.caas_rds" → "caas_rds").
+// moduleMappings maps TF module paths to Pulumi component names (e.g., "module.core_rds" → "core_rds").
 // resourceMappings maps TF resource addresses to Pulumi resource names (e.g., "aws_s3_bucket.my_bucket" → "my_bucket").
 func FillImportFile(digest *ModuleMap, importFile *ImportFile, moduleMappings, resourceMappings map[string]string) *FillResult {
 	result := &FillResult{}
@@ -296,14 +296,14 @@ func extractResourceName(address string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	// The resource name is the last part (e.g., ssm_parameters["/develop/dmvhm/cm/api_stage"]).
+	// The resource name is the last part (e.g., ssm_parameters["/develop/mysvc/cm/api_stage"]).
 	// Kept as-is to match Pulumi resource name suffixes directly.
 	return parts[len(parts)-1]
 }
 
 // extractImportSuffix extracts the resource name suffix from a Pulumi import
 // entry name by stripping the parent component name prefix.
-// ("caas_rds-aurora_cluster", "caas_rds") → "aurora_cluster"
+// ("core_rds-aurora_cluster", "core_rds") → "aurora_cluster"
 // ("my-bucket", "") → "my-bucket"
 func extractImportSuffix(name, parent string) string {
 	if parent == "" {

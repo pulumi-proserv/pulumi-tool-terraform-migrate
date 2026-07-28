@@ -29,9 +29,9 @@ func TestStateLogicalIDsByType(t *testing.T) {
 	t.Parallel()
 	state := []byte(`{"deployment":{"resources":[
 		{"urn":"urn:pulumi:dev::p::pulumi:pulumi:Stack::p-dev","type":"pulumi:pulumi:Stack","custom":false},
-		{"urn":"urn:pulumi:dev::p::aws:lambda/function:Function::caas-authlambda5AE8A89F","type":"aws:lambda/function:Function","custom":true},
-		{"urn":"urn:pulumi:dev::p::aws:lambda/function:Function::caas-lambdafunction841552AF","type":"aws:lambda/function:Function","custom":true},
-		{"urn":"urn:pulumi:dev::p::aws:s3/bucket:Bucket::caas-imagesbucketD8E2A22E","type":"aws:s3/bucket:Bucket","custom":true}
+		{"urn":"urn:pulumi:dev::p::aws:lambda/function:Function::core-authlambda5AE8A89F","type":"aws:lambda/function:Function","custom":true},
+		{"urn":"urn:pulumi:dev::p::aws:lambda/function:Function::core-lambdafunction841552AF","type":"aws:lambda/function:Function","custom":true},
+		{"urn":"urn:pulumi:dev::p::aws:s3/bucket:Bucket::core-imagesbucketD8E2A22E","type":"aws:s3/bucket:Bucket","custom":true}
 	]}}`)
 
 	ids, err := StateLogicalIDsByType(state, "aws:lambda/function:Function")
@@ -53,7 +53,7 @@ func TestPatchStateFromCFN_DefaultPatch(t *testing.T) {
 		"deployment": map[string]interface{}{
 			"resources": []interface{}{
 				map[string]interface{}{
-					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::caas-mysecret",
+					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::core-mysecret",
 					"type":   "aws:secretsmanager/secret:Secret",
 					"custom": true,
 					"id":     "arn:aws:secretsmanager:us-east-1:123:secret:mysecret",
@@ -110,7 +110,7 @@ func TestPatchStateFromCFN_DigestAttributePatch(t *testing.T) {
 		"deployment": map[string]interface{}{
 			"resources": []interface{}{
 				map[string]interface{}{
-					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::caas-mysecret",
+					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::core-mysecret",
 					"type":   "aws:secretsmanager/secret:Secret",
 					"custom": true,
 					"id":     "arn:aws:secretsmanager:us-east-1:123:secret:mysecret",
@@ -183,7 +183,7 @@ func TestPatchStateFromCFN_LocalZipAssetPatch(t *testing.T) {
 		"deployment": map[string]interface{}{
 			"resources": []interface{}{
 				map[string]interface{}{
-					"urn":    "urn:pulumi:dev::proj::aws:lambda/function:Function::caas-myfunction",
+					"urn":    "urn:pulumi:dev::proj::aws:lambda/function:Function::core-myfunction",
 					"type":   "aws:lambda/function:Function",
 					"custom": true,
 					"id":     "myfunction",
@@ -250,7 +250,7 @@ func TestPatchStateFromCFN_NoMatchLeftUntouched(t *testing.T) {
 		"deployment": map[string]interface{}{
 			"resources": []interface{}{
 				map[string]interface{}{
-					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::caas-orphan",
+					"urn":    "urn:pulumi:dev::proj::aws:secretsmanager/secret:Secret::core-orphan",
 					"type":   "aws:secretsmanager/secret:Secret",
 					"custom": true,
 					"id":     "arn:aws:secretsmanager:us-east-1:123:secret:orphan",

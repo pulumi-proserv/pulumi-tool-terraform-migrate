@@ -394,15 +394,15 @@ func TestFlattenAddress(t *testing.T) {
 		},
 		{
 			name:      "module resource with for_each",
-			address:   `module.rds["dmvhm"].aws_rds_cluster.main`,
+			address:   `module.rds["mysvc"].aws_rds_cluster.main`,
 			attribute: "master_password",
-			expected:  "rds_dmvhm_main_master_password",
+			expected:  "rds_mysvc_main_master_password",
 		},
 		{
 			name:      "deep module with generic name this",
-			address:   `module.capture_secrets["dmvhm-capture-service-develop"].aws_secretsmanager_secret_version.this["dmvhm-capture-service-develop/ia_callback_client_oauth"]`,
+			address:   `module.console_secrets["mysvc-console-service-develop"].aws_secretsmanager_secret_version.this["mysvc-console-service-develop/ia_callback_client_oauth"]`,
 			attribute: "secret_string",
-			expected:  "capture_secrets_dmvhm_capture_service_develop_ia_callback_client_oauth_secret_string",
+			expected:  "console_secrets_mysvc_console_service_develop_ia_callback_client_oauth_secret_string",
 		},
 		{
 			name:      "ssm parameter pattern with generic name",
@@ -428,15 +428,15 @@ func TestFlattenAddress(t *testing.T) {
 			attribute: "value",
 			expected:  "parent_p1_child_c1_secret_val_value",
 		},
-		// Real dmvhm addresses that were too long
+		// Real mysvc addresses that were too long
 		{
-			name:      "dmvhm capture secrets long key",
-			address:   `module.capture_secrets["dmvhm-capture-service-develop"].aws_secretsmanager_secret_version.this["dmvhm-capture-service-develop/capture_client_secret"]`,
+			name:      "mysvc console secrets long key",
+			address:   `module.console_secrets["mysvc-console-service-develop"].aws_secretsmanager_secret_version.this["mysvc-console-service-develop/console_client_secret"]`,
 			attribute: "secret_string",
-			expected:  "capture_secrets_dmvhm_capture_service_develop_capture_client_secret_secret_string",
+			expected:  "console_secrets_mysvc_console_service_develop_console_client_secret_secret_string",
 		},
 		{
-			name:      "dmvhm cdpa param stack",
+			name:      "mysvc cdpa param stack",
 			address:   `module.cdpa_param_stack_values_parameters["/develop/cdp-adapter"].aws_ssm_parameter.ssm_parameters["/develop/cdp-adapter/api_key"]`,
 			attribute: "value",
 			expected:  "cdpa_param_stack_values_parameters_develop_cdp_adapter_api_key_value",
@@ -453,20 +453,20 @@ func TestFlattenAddress(t *testing.T) {
 
 func TestFlattenAddress_MaxLength(t *testing.T) {
 	t.Parallel()
-	// All dmvhm-style addresses should produce keys under 106 chars
-	// (128 - len("dmvhm-infrastructure") - 1 = 107, so <=106 is safe)
+	// All mysvc-style addresses should produce keys under 106 chars
+	// (128 - len("mysvc-infrastructure") - 1 = 107, so <=106 is safe)
 	longAddresses := []struct {
 		address   string
 		attribute string
 	}{
-		{`module.capture_secrets["dmvhm-capture-service-develop"].aws_secretsmanager_secret_version.this["dmvhm-capture-service-develop/ia_callback_client_oauth"]`, "secret_string"},
-		{`module.capture_secrets["dmvhm-capture-service-develop"].aws_secretsmanager_secret_version.this["dmvhm-capture-service-develop/capture_client_secret"]`, "secret_string"},
+		{`module.console_secrets["mysvc-console-service-develop"].aws_secretsmanager_secret_version.this["mysvc-console-service-develop/ia_callback_client_oauth"]`, "secret_string"},
+		{`module.console_secrets["mysvc-console-service-develop"].aws_secretsmanager_secret_version.this["mysvc-console-service-develop/console_client_secret"]`, "secret_string"},
 		{`module.cdpa_param_stack_values_parameters["/develop/cdp-adapter"].aws_ssm_parameter.ssm_parameters["/develop/cdp-adapter/trusted_host_key"]`, "value"},
 		{`module.cdpa_param_stack_values_parameters["/develop/cdp-adapter"].aws_ssm_parameter.ssm_parameters["/develop/cdp-adapter/api_key"]`, "value"},
 		{`module.cdpa_param_stack_values_parameters["/develop/cdp-adapter"].aws_ssm_parameter.ssm_parameters["/develop/cdp-adapter/certificate_password"]`, "value"},
 	}
 
-	projectName := "dmvhm-infrastructure"
+	projectName := "mysvc-infrastructure"
 	maxKeyLen := 128 - len(projectName) - 1
 
 	for _, la := range longAddresses {

@@ -48,7 +48,7 @@ func TestFillImportFile_SingleMatch(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			{Type: "example:network:Vpc", Name: "vpc", Component: true},
 			// Names follow ${parent}-${tfResourceName} convention
 			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "<PLACEHOLDER>", Parent: "vpc"},
 			{Type: "aws:ec2/subnet:Subnet", Name: `vpc-public[0]`, ID: "<PLACEHOLDER>", Parent: "vpc"},
@@ -98,7 +98,7 @@ func TestFillImportFile_NameMatchMultipleSameType(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:data:RdsCluster", Name: "rds", Component: true},
+			{Type: "example:data:RdsCluster", Name: "rds", Component: true},
 			{Type: "aws:rds/cluster:Cluster", Name: "rds-primary", ID: "<PLACEHOLDER>", Parent: "rds"},
 			{Type: "aws:rds/cluster:Cluster", Name: "rds-replica", ID: "<PLACEHOLDER>", Parent: "rds"},
 		},
@@ -139,7 +139,7 @@ func TestFillImportFile_TypeOnlyFallback(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			{Type: "example:network:Vpc", Name: "vpc", Component: true},
 			// Name doesn't follow convention (legacy component)
 			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-my-custom-name", ID: "<PLACEHOLDER>", Parent: "vpc"},
 		},
@@ -193,7 +193,7 @@ func TestFillImportFile_MissingModule(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:data:Rds", Name: "rds", Component: true},
+			{Type: "example:data:Rds", Name: "rds", Component: true},
 			{Type: "aws:rds/cluster:Cluster", Name: "rds-aurora_cluster", ID: "<PLACEHOLDER>", Parent: "rds"},
 		},
 	}
@@ -237,7 +237,7 @@ func TestFillImportFile_DataSourcesSkipped(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			{Type: "example:network:Vpc", Name: "vpc", Component: true},
 			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "<PLACEHOLDER>", Parent: "vpc"},
 		},
 	}
@@ -274,7 +274,7 @@ func TestFillImportFile_PrefilledIDsUntouched(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:network:Vpc", Name: "vpc", Component: true},
+			{Type: "example:network:Vpc", Name: "vpc", Component: true},
 			{Type: "aws:ec2/vpc:Vpc", Name: "vpc-main", ID: "vpc-already-set", Parent: "vpc"},
 		},
 	}
@@ -295,14 +295,14 @@ func TestFillImportFile_ForEachMapping(t *testing.T) {
 
 	digest := &ModuleMap{
 		Modules: map[string]*ModuleMapEntry{
-			`capture_ui["dmvhm"]`: {
-				TerraformPath: `module.capture_ui["dmvhm"]`,
+			`console_ui["mysvc"]`: {
+				TerraformPath: `module.console_ui["mysvc"]`,
 				Resources: []ModuleResource{
 					{
 						Mode:             "managed",
-						TranslatedURN:    `urn:pulumi:dev::proj::aws:s3/bucket:Bucket::capture_ui["dmvhm"]-ui`,
-						TerraformAddress: `module.capture_ui["dmvhm"].aws_s3_bucket.ui`,
-						ImportID:         "dmvhm-ui-bucket",
+						TranslatedURN:    `urn:pulumi:dev::proj::aws:s3/bucket:Bucket::console_ui["mysvc"]-ui`,
+						TerraformAddress: `module.console_ui["mysvc"].aws_s3_bucket.ui`,
+						ImportID:         "mysvc-ui-bucket",
 					},
 				},
 			},
@@ -311,21 +311,21 @@ func TestFillImportFile_ForEachMapping(t *testing.T) {
 
 	importFile := &ImportFile{
 		Resources: []ImportEntry{
-			{Type: "veridos:compute:CaptureUi", Name: `capture_ui["dmvhm"]`, Component: true},
+			{Type: "example:compute:ConsoleUi", Name: `console_ui["mysvc"]`, Component: true},
 			// Name follows convention: ${parent}-${tfResourceName}
-			{Type: "aws:s3/bucket:Bucket", Name: `capture_ui["dmvhm"]-ui`, ID: "<PLACEHOLDER>", Parent: `capture_ui["dmvhm"]`},
+			{Type: "aws:s3/bucket:Bucket", Name: `console_ui["mysvc"]-ui`, ID: "<PLACEHOLDER>", Parent: `console_ui["mysvc"]`},
 		},
 	}
 
 	mappings := map[string]string{
-		`module.capture_ui["dmvhm"]`: `capture_ui["dmvhm"]`,
+		`module.console_ui["mysvc"]`: `console_ui["mysvc"]`,
 	}
 
 	result := FillImportFile(digest, importFile, mappings, nil)
 
 	assert.Equal(t, 1, result.Filled)
 	assert.Equal(t, 0, result.Unmatched)
-	assert.Equal(t, "dmvhm-ui-bucket", importFile.Resources[1].ID)
+	assert.Equal(t, "mysvc-ui-bucket", importFile.Resources[1].ID)
 }
 
 func TestFillImportFile_ResourceMappings(t *testing.T) {
@@ -440,7 +440,7 @@ func TestExtractResourceName(t *testing.T) {
 		{"module.vpc.aws_subnet.public[0]", "public[0]"},
 		{`module.vpc.aws_ssm_parameter.params["my_key"]`, `params["my_key"]`},
 		{"aws_s3_bucket.my_bucket", "my_bucket"},
-		{`module.capture_ui["dmvhm"].aws_s3_bucket.ui`, "ui"},
+		{`module.console_ui["mysvc"].aws_s3_bucket.ui`, "ui"},
 	}
 
 	for _, tt := range tests {
@@ -460,7 +460,7 @@ func TestExtractImportSuffix(t *testing.T) {
 	}{
 		{"vpc-main", "vpc", "main"},
 		{"rds-aurora_cluster", "rds", "aurora_cluster"},
-		{`capture_ui["dmvhm"]-ui`, `capture_ui["dmvhm"]`, "ui"},
+		{`console_ui["mysvc"]-ui`, `console_ui["mysvc"]`, "ui"},
 		{"my_bucket", "", "my_bucket"},
 		// Name doesn't have parent prefix — return as-is
 		{"unrelated-name", "vpc", "unrelated-name"},

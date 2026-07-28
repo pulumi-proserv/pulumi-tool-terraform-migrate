@@ -47,7 +47,7 @@ func TestFillFromDigest(t *testing.T) {
 func TestFillFromDigest_SecretVersion(t *testing.T) {
 	t.Parallel()
 	// The SecretVersion is not a CFN resource; it matches the secret's logical ID
-	// (via a caas-sv-<logicalId> name) and is filled from the secret's live-enriched
+	// (via a core-sv-<logicalId> name) and is filled from the secret's live-enriched
 	// SecretVersionImportID.
 	digest := &StackDigest{Resources: []CfnResource{
 		{LogicalID: "iacallbacktoken", CfnType: "AWS::SecretsManager::Secret",
@@ -56,8 +56,8 @@ func TestFillFromDigest_SecretVersion(t *testing.T) {
 			SecretVersionImportID: "arn:aws:secretsmanager:us-east-1:1:secret:foo-abc|v9"},
 	}}
 	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
-		{Type: "aws:secretsmanager/secret:Secret", Name: "caas-iacallbacktoken"},
-		{Type: "aws:secretsmanager/secretVersion:SecretVersion", Name: "caas-sv-iacallbacktoken"},
+		{Type: "aws:secretsmanager/secret:Secret", Name: "core-iacallbacktoken"},
+		{Type: "aws:secretsmanager/secretVersion:SecretVersion", Name: "core-sv-iacallbacktoken"},
 	}}
 	res := FillFromDigest(digest, importFile, nil, "native")
 	require.Equal(t, 2, res.Filled)
@@ -75,7 +75,7 @@ func TestFillFromDigest_SecretVersionMissingEnrichment(t *testing.T) {
 			PhysicalID: "arn:aws:secretsmanager:us-east-1:1:secret:s-abc"},
 	}}
 	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
-		{Type: "aws:secretsmanager/secretVersion:SecretVersion", Name: "caas-sv-s"},
+		{Type: "aws:secretsmanager/secretVersion:SecretVersion", Name: "core-sv-s"},
 	}}
 	res := FillFromDigest(digest, importFile, nil, "native")
 	require.Equal(t, 0, res.Filled)
@@ -128,7 +128,7 @@ func TestFillFromDigest_ComponentIncrementsSkipped(t *testing.T) {
 	t.Parallel()
 	digest := &StackDigest{Resources: []CfnResource{}}
 	importFile := &pkg.ImportFile{Resources: []pkg.ImportEntry{
-		{Name: "caas_rds", Component: true},
+		{Name: "core_rds", Component: true},
 	}}
 	res := FillFromDigest(digest, importFile, nil, "native")
 	require.Equal(t, 1, res.Skipped)
