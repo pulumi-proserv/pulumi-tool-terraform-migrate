@@ -64,6 +64,20 @@ To proceed with the migration, import the state into your Pulumi stack, feed the
 produce Pulumi sources that translate the Terraform sources. Instructing the LLM to aim for a clean `pulumi preview`
 helps is to fix discrepancies between code and state and get accurate results.
 
+## Agent skills
+
+The `skills/` directory holds agent skills that drive these commands end to end.
+Point your agent harness at them (or copy the directories into wherever it loads
+skills from):
+
+| Skill | Purpose |
+|---|---|
+| `pulumi-terraform-workspace-migration` | Orchestrates a full Terraform workspace migration: `tf-digest` → components → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview → staged first `up`. Bundles `batch-import.bb`. |
+| `pulumi-terraform-module-to-component` | Converts a single Terraform module into a Pulumi ComponentResource, including the logical-naming rule `import-id-match` depends on. |
+| `cdk-to-pulumi-classic` | Migrates a deployed CDK app / CloudFormation stack to hand-authored Pulumi on the classic provider, via `digest cfn` / `resolve cfn` / `patch-state cfn`. |
+| `cdk-construct-to-component` | Converts CDK constructs into Pulumi ComponentResources for that migration. |
+| `pulumi-component-authoring` | Shared foundation for both component skills: interface design, IAM policy documents, packaging, publishing, smoke tests. |
+
 ## Migration workflow
 
 The `tf-digest` and `import-id-match` commands work together to automate Pulumi
