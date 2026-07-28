@@ -394,6 +394,112 @@ Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
 
 ---
 
+## `import` command
+
+Runs `pulumi import` over a prepared import file in batches, and — when a batch does not fully
+land — re-imports the missing resources one at a time to identify exactly which import IDs are
+bad. One run therefore reports every bad ID, instead of one per run.
+
+### Why not just run `pulumi import` directly
+
+You can, and for a small stack that is fine. Two things make it painful at scale:
+
+**A failed run is partial, and the error doesn't say what landed.** `pulumi import` executes the
+file as a single deployment in which each entry is a step. Steps run concurrently and each
+success is committed to state as it completes; one failing step fails the deployment with a
+non-zero exit, but nothing is rolled back, and with limited parallelism later steps may never
+have started. So a failed run typically leaves some resources imported and some not — and the
+error text tells you only that the deployment failed.
+
+**The exit status is not a reliable success signal either.** `auto.Stack.ImportResources` returns
+an error after a *successful* import whenever code generation is disabled, which this workflow
+always disables ([pulumi/pulumi#24103](https://github.com/pulumi/pulumi/issues/24103)).
+
+This command sidesteps both by reading stack state after each import and treating **presence in
+state** as the only verdict. Resources are matched on type *and* name.
+
+### Usage
+
+```bash
+# Inspect the plan without importing anything
+pulumi plugin run terraform-migrate -- import \
+  --file imports-ready.json \
+  --project-dir . --stack dev \
+  --dry-run
+
+# Import (wrap in `pulumi env run <env> --` if your credentials come from ESC)
+pulumi plugin run terraform-migrate -- import \
+  --file imports-ready.json \
+  --project-dir . --stack dev \
+  --batch-size 100
+```
+
+Progress goes to stderr, the summary to stdout. Exit code is 0 when nothing failed, 1 otherwise.
+
+### What a run reports
+
+Progress on stderr:
+
+```
+Batch 1/1 (4 resources)
+  isolating 1 failure(s)
+```
+
+Summary on stdout, for a batch of four in which one import ID was malformed:
+
+```
+Import summary (1 batches)
+  Imported: 3
+  Skipped:  0 (already in state)
+  Failed:   1
+
+FAILED RESOURCES
+  int-bad (random:index/randomInteger:RandomInteger)
+    id:    NOT-A-VALID-INTEGER-IMPORT-ID
+    error:
+      resource not present in stack state after import (last error: failed to import resources: exit status 1
+      code: 1
+      pulumi:pulumi:Stack livecheck-dev5 running error: update failed: step application failed: Import Random Integer Error: Invalid import usage: expecting {result},{min},{max} or {result},{min},{max},{seed}
+      error: [ERROR] Invalid import usage: expecting {result},{min},{max} or {result},{min},{max},{seed}: Import Random Integer Error
+      ... (8 more lines suppressed)
+
+Fix the import IDs above and re-run; imported resources are skipped.
+```
+
+Note `Imported: 3` alongside `Failed: 1`: the underlying deployment exited non-zero, but three of
+the four resources had genuinely imported. That is the partial-failure behavior described above,
+and the reason the summary is derived from stack state rather than from the exit status.
+
+Fix the reported IDs and re-run — resume is on by default, so everything already in state is
+skipped and only the failures are retried.
+
+### Behavior worth knowing
+
+- **Every batch carries every `component: true` entry.** `pulumi import` resolves a resource's
+  `parent` through the `nameTable`; a child imported without its component fails with
+  `has no entry in 'nameTable'`.
+- **Resume is on by default** (`--no-resume` disables it), so a re-run after fixing IDs is safe
+  and cheap.
+- **Resources are always imported unprotected and without code generation.** Both are
+  requirements of the hand-authored migration workflow, so neither is a flag: `--protect` would
+  leave a permanent `~protect` diff, and generated code defeats the point of hand-authoring.
+- **Isolation is worst-case quadratic.** A batch in which everything fails costs one extra
+  `pulumi import` invocation per resource. That only happens on a run that was going to fail
+  anyway, and the diagnostic is worth it.
+
+### Flags
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--file` | Yes | Prepared import file (from `import-id-match` or `resolve`) |
+| `--stack` | Yes | Pulumi stack name |
+| `--project-dir` | No | Pulumi project directory (default `.`) |
+| `--batch-size` | No | Resources per batch (default 100) |
+| `--no-resume` | No | Import resources even if already present in stack state |
+| `--dry-run` | No | Print the batch plan and exit without importing |
+
+---
+
 ## `patch-state` command
 
 After `pulumi import`, the cloud API's Read doesn't return all field values. Write-only fields
