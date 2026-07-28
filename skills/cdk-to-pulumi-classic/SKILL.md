@@ -168,8 +168,12 @@ pulumi plugin run terraform-migrate -- resolve cfn \
   (`DeploymentId|RestApiId`). Tame the aws-native cascade (make the RestApi a
   strict no-op: set every default it populates, plus `ignoreChanges:["tags"]`) and
   set the provider-populated integration defaults.
-- Validate the import file before running — one malformed ID aborts the whole
-  batch.
+- Validate the import file before running — one malformed ID fails the whole
+  `pulumi import` run. The failure is **partial**: the import is one deployment
+  whose steps commit to state as they succeed, so a failed run typically leaves
+  some resources imported and some not, and the error does not say which. Re-run
+  with the `import` command (which reads state to determine what actually landed,
+  and isolates the bad IDs) rather than assuming nothing was imported.
 
 Per-type import-ID formats and the API Gateway family details:
 `references/import-id-and-provider.md`.

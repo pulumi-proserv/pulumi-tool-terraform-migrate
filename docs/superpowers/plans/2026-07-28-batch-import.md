@@ -413,7 +413,7 @@ func (f *fakeImporter) nonComponentPayloads() [][]ResourceKey {
 }
 ```
 
-Note: the fake writes resources to state even on a partially failing batch. Real `pulumi import` is closer to all-or-nothing per batch, but modelling partial success is strictly harder for `Run` to handle correctly, and Task 5 covers the all-or-nothing case explicitly.
+Note: the fake writes resources to state even on a partially failing batch. That is **correct** — verified on a live stack after this plan was written. `pulumi import` executes the file as one deployment whose steps commit to state as they succeed, so a run with one bad ID exited 1 while 3 of 4 resources were already imported. (An earlier draft of this note claimed real import was "closer to all-or-nothing per batch"; that was wrong.) Task 5 additionally covers the case where nothing lands.
 
 - [x] **Step 2: Write the failing test**
 
@@ -1274,10 +1274,16 @@ func newImportCmd() *cobra.Command {
 		Long: `Import the resources in a prepared Pulumi import file, in batches, and
 report every resource that failed.
 
-A single malformed import ID aborts a whole "pulumi import" batch. When a batch
-does not fully land, this command re-imports that batch's resources one at a
-time to identify exactly which ones failed, records them, and carries on. One
-run therefore surfaces every bad import ID instead of one per run.
+A single malformed import ID fails the whole "pulumi import" run. The import
+executes as one deployment in which each entry is a step, so one failing step
+fails the deployment with a non-zero exit — but steps that already succeeded are
+committed to state and are NOT rolled back, and depending on scheduling, later
+steps may never have started. The outcome is therefore partial, and the error
+alone does not say which resources landed.
+
+When a batch does not fully land, this command re-imports that batch's missing
+resources one at a time to identify exactly which ones failed, records them, and
+carries on. One run therefore surfaces every bad import ID instead of one per run.
 
 Whether a resource imported is determined by reading stack state afterwards, not
 by the importer's exit status. Resources already present in state are skipped, so

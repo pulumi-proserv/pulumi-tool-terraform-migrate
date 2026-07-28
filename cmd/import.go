@@ -36,10 +36,16 @@ func newImportCmd() *cobra.Command {
 		Long: `Import the resources in a prepared Pulumi import file, in batches, and
 report every resource that failed.
 
-A single malformed import ID aborts a whole "pulumi import" batch. When a batch
-does not fully land, this command re-imports that batch's resources one at a
-time to identify exactly which ones failed, records them, and carries on. One
-run therefore surfaces every bad import ID instead of one per run.
+A single malformed import ID fails the whole "pulumi import" run. The import
+executes as one deployment in which each entry is a step, so one failing step
+fails the deployment with a non-zero exit — but steps that already succeeded are
+committed to state and are NOT rolled back, and depending on scheduling, later
+steps may never have started. The outcome is therefore partial, and the error
+alone does not say which resources landed.
+
+When a batch does not fully land, this command re-imports that batch's missing
+resources one at a time to identify exactly which ones failed, records them, and
+carries on. One run therefore surfaces every bad import ID instead of one per run.
 
 Whether a resource imported is determined by reading stack state afterwards, not
 by the importer's exit status. Resources already present in state are skipped, so

@@ -13,9 +13,16 @@ batch, shells out to `pulumi import`, and supports `--resume`.
 Three problems:
 
 1. **It's a second toolchain.** Users of a Go binary must also install babashka.
-2. **No failure isolation.** `pulumi import` aborts a whole batch on a single
-   malformed import ID. The script reports "batch 3 failed" and stops, so a run
-   with five bad IDs takes five fix-and-rerun cycles.
+2. **No failure isolation.** A single malformed import ID fails the whole
+   `pulumi import` run, and the failure is *partial*: the import executes as one
+   deployment in which each entry is a step, so successful steps are committed to
+   state while the failing step fails the deployment. Nothing is rolled back, and
+   the error does not say which resources landed. The script reports "batch 3
+   failed" and stops, so a run with five bad IDs takes five fix-and-rerun cycles.
+
+   > Verified on a live stack: a 4-resource batch with one bad ID exited 1 with
+   > `step application failed`, while 3 of the 4 resources were already in state.
+   > This is the concrete reason state — not the error — must decide the outcome.
 3. **Success detection is string matching.** The script decides an import
    succeeded by looking for `"imported"` in stdout and special-casing the
    cosmetic `parse resource provider reference` error. That is fragile, and a new
