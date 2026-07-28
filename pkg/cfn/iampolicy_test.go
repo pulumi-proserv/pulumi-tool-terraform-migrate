@@ -26,11 +26,11 @@ func TestInlineRolePolicyImportID(t *testing.T) {
 	// Single-role inline policy → role:policyName, mapped to rolePolicy.
 	id, pt, ok := inlineRolePolicyImportID(map[string]interface{}{
 		"PolicyName": "lambdafunctionServiceRoleDefaultPolicy33908639",
-		"Roles":      []interface{}{"dmvhm-cs-lambdafunctionServiceRole-onNcPqJLMnE7"},
+		"Roles":      []interface{}{"mysvc-cs-lambdafunctionServiceRole-onNcPqJLMnE7"},
 	})
 	require.True(t, ok)
 	require.Equal(t, "aws:iam/rolePolicy:RolePolicy", pt)
-	require.Equal(t, "dmvhm-cs-lambdafunctionServiceRole-onNcPqJLMnE7:lambdafunctionServiceRoleDefaultPolicy33908639", id)
+	require.Equal(t, "mysvc-cs-lambdafunctionServiceRole-onNcPqJLMnE7:lambdafunctionServiceRoleDefaultPolicy33908639", id)
 
 	// Multi-role → not auto-resolved (one CFN policy = N Pulumi rolePolicies).
 	_, _, ok = inlineRolePolicyImportID(map[string]interface{}{

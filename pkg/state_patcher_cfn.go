@@ -23,7 +23,7 @@ import (
 // logicalIDFromName extracts the CFN logical ID from a Pulumi resource name,
 // mirroring pkg/cfn's unexported suffix() helper: the last "-"-separated
 // segment. State resource names produced by `resolve cfn` look like
-// "caas-<logicalId>".
+// "<prefix>-<logicalId>".
 func logicalIDFromName(name string) string {
 	if i := strings.LastIndex(name, "-"); i >= 0 {
 		return name[i+1:]
