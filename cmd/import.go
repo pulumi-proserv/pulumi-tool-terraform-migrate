@@ -147,12 +147,130 @@ func formatResult(res *batchimport.Result, dryRun bool) string {
 		for _, f := range res.Failed {
 			fmt.Fprintf(&b, "  %s (%s)\n", f.Key.Name, f.Key.Type)
 			fmt.Fprintf(&b, "    id:    %s\n", f.ID)
-			fmt.Fprintf(&b, "    error: %s\n", strings.TrimSpace(f.Err))
+			b.WriteString(renderErrorBlock(f.Err))
 		}
 		fmt.Fprintf(&b, "\nFix the import IDs above and re-run; imported resources are skipped.\n")
 	}
 
 	return b.String()
+}
+
+// errLineIndent is the indentation applied to continuation lines of a
+// multi-line rendered error, so the resource/id/error hierarchy stays
+// visually clear and the lines don't run flush against the left margin.
+const errLineIndent = "      "
+
+// maxErrorLines caps the number of lines kept from a multi-line error so a
+// single noisy failure (e.g. the SDK's wrapped CLI output, which can inline
+// an entire "pulumi import" progress stream, Diagnostics/Resources/Duration
+// blocks, etc.) can't blow out the FAILED RESOURCES table.
+const maxErrorLines = 6
+
+// renderErrorBlock renders a single failure's error text for the
+// FAILED RESOURCES table. A single-line error renders unchanged on the
+// "error:" line. A multi-line error is condensed: progress-stream artifacts
+// and section header/footer noise are dropped, lines carrying real
+// diagnostic content (containing "error:" or "Error") are prioritized when
+// the result is capped at maxErrorLines, and a trailing marker reports how
+// many additional lines were suppressed.
+func renderErrorBlock(errText string) string {
+	trimmed := strings.TrimSpace(errText)
+	rawLines := strings.Split(trimmed, "\n")
+
+	if len(rawLines) <= 1 {
+		return fmt.Sprintf("    error: %s\n", trimmed)
+	}
+
+	filtered := filterNoiseLines(rawLines)
+	if len(filtered) == 0 {
+		// Nothing survived filtering; fall back to the first raw line rather
+		// than rendering an empty error.
+		return fmt.Sprintf("    error: %s\n", strings.TrimSpace(rawLines[0]))
+	}
+	if len(filtered) == 1 {
+		return fmt.Sprintf("    error: %s\n", filtered[0])
+	}
+
+	kept, suppressed := capErrorLines(filtered, maxErrorLines)
+
+	var b strings.Builder
+	b.WriteString("    error:\n")
+	for _, l := range kept {
+		fmt.Fprintf(&b, "%s%s\n", errLineIndent, l)
+	}
+	if suppressed > 0 {
+		fmt.Fprintf(&b, "%s... (%d more lines suppressed)\n", errLineIndent, suppressed)
+	}
+	return b.String()
+}
+
+// filterNoiseLines drops blank lines and lines that are pure formatting
+// noise from a wrapped CLI error: progress-stream artifacts (lines
+// beginning with "=" once trimmed) and the standalone Diagnostics:,
+// Resources:, and Duration: ... section lines.
+func filterNoiseLines(lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(t, "=") {
+			continue
+		}
+		if t == "Diagnostics:" || t == "Resources:" {
+			continue
+		}
+		if strings.HasPrefix(t, "Duration:") {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// capErrorLines caps lines at max, preferring to keep lines that carry real
+// diagnostic content (containing "error:" or "Error") when there isn't room
+// for everything. Relative order is preserved. It returns the kept lines
+// and the count of lines suppressed by the cap.
+func capErrorLines(lines []string, max int) (kept []string, suppressed int) {
+	if len(lines) <= max {
+		return lines, 0
+	}
+
+	selected := make([]bool, len(lines))
+	count := 0
+
+	// First pass: keep diagnostic lines, in order.
+	for i, l := range lines {
+		if count >= max {
+			break
+		}
+		if strings.Contains(l, "error:") || strings.Contains(l, "Error") {
+			selected[i] = true
+			count++
+		}
+	}
+	// Second pass: fill any remaining slots with the earliest non-diagnostic
+	// lines.
+	for i, l := range lines {
+		if count >= max {
+			break
+		}
+		if selected[i] {
+			continue
+		}
+		_ = l
+		selected[i] = true
+		count++
+	}
+
+	for i, l := range lines {
+		if selected[i] {
+			kept = append(kept, l)
+		}
+	}
+	return kept, len(lines) - len(kept)
 }
 
 func init() { rootCmd.AddCommand(newImportCmd()) }

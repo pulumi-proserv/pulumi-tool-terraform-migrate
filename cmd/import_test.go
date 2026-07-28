@@ -15,6 +15,8 @@
 package cmd
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/batchimport"
@@ -87,6 +89,92 @@ func TestFormatResult_DryRun(t *testing.T) {
 	assert.Contains(t, out, "Would import: 1")
 	assert.Contains(t, out, "Batches:      1")
 	assert.NotContains(t, out, "Imported:")
+}
+
+func TestFormatResult_SingleLineErrorUnchanged(t *testing.T) {
+	t.Parallel()
+
+	out := formatResult(&batchimport.Result{
+		Failed: []batchimport.Failure{
+			{
+				Key: batchimport.ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "b1"},
+				ID:  "bad-id",
+				Err: "resource not present in stack state after import",
+			},
+		},
+		BatchCount: 1,
+	}, false)
+
+	assert.Contains(t, out, "    error: resource not present in stack state after import\n")
+}
+
+func TestFormatResult_MessyMultiLineErrorCondensed(t *testing.T) {
+	t.Parallel()
+
+	messyErr := `resource not present in stack state after import (last error: failed to import resources: exit status 1
+code: 1
+stdout: Importing (dev2):
+
+ =  random:index:RandomInteger int-bad importing (0s)
+ =  random:index:RandomInteger int-bad importing (0s) error: [ERROR] Invalid import usage: expecting {result},{min},{max} or {result},{min},{max},{seed}: Import Random Integer Error
+
+Diagnostics:
+  random:index:RandomInteger (int-bad):
+    error: [ERROR] Invalid import usage: expecting {result},{min},{max} or {result},{min},{max},{seed}: Import Random Integer Error
+
+Resources:
+
+Duration: 1s
+)`
+
+	out := formatResult(&batchimport.Result{
+		Failed: []batchimport.Failure{
+			{
+				Key: batchimport.ResourceKey{Type: "random:index/randomInteger:RandomInteger", Name: "int-bad"},
+				ID:  "NOT-A-VALID-INTEGER-IMPORT-ID",
+				Err: messyErr,
+			},
+		},
+		BatchCount: 1,
+	}, false)
+
+	assert.Contains(t, out, "Invalid import usage")
+	assert.NotRegexp(t, `(?m)^\s*=`, out)
+
+	// Isolate the rendered failure entry (not the whole report, which also
+	// includes the summary header and trailer) and check that it, not just
+	// the overall output, stays condensed.
+	start := strings.Index(out, "int-bad (")
+	end := strings.Index(out, "Fix the import IDs")
+	require.Greater(t, start, -1)
+	require.Greater(t, end, start)
+	entry := out[start:end]
+
+	lineCount := strings.Count(entry, "\n")
+	assert.Less(t, lineCount, 15, "rendered failure entry should stay condensed, got:\n%s", entry)
+}
+
+func TestFormatResult_ManyKeptLinesSuppressed(t *testing.T) {
+	t.Parallel()
+
+	lines := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		lines = append(lines, fmt.Sprintf("error: diagnostic detail line %d", i))
+	}
+	longErr := strings.Join(lines, "\n")
+
+	out := formatResult(&batchimport.Result{
+		Failed: []batchimport.Failure{
+			{
+				Key: batchimport.ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "b1"},
+				ID:  "bad-id",
+				Err: longErr,
+			},
+		},
+		BatchCount: 1,
+	}, false)
+
+	assert.Contains(t, out, "... (4 more lines suppressed)")
 }
 
 func TestNewImportCmd_Flags(t *testing.T) {
