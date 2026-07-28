@@ -23,13 +23,18 @@ import (
 
 // fakeImporter simulates pulumi import against an in-memory state.
 //
-// failKeys are resources that never land. batchErr, when set, is returned from
-// every ImportBatch call regardless of outcome — this models SDK v3.222.0
-// returning "failed to read generated code" after a successful import.
+// failKeys are resources that never land, in a batch or alone. failInBatchOnly
+// are resources that fail only when the payload contains more than one
+// non-component resource (i.e. a real batch) but land when imported alone
+// (i.e. an isolation call) — this models the actual bug the isolation pass
+// exists to catch. batchErr, when set, is returned from every ImportBatch call
+// regardless of outcome — this models SDK v3.222.0 returning "failed to read
+// generated code" after a successful import.
 type fakeImporter struct {
-	state    map[ResourceKey]bool
-	failKeys map[ResourceKey]bool
-	batchErr error
+	state           map[ResourceKey]bool
+	failKeys        map[ResourceKey]bool
+	failInBatchOnly map[ResourceKey]bool
+	batchErr        error
 
 	// recorded for assertions
 	payloads  [][]*optimport.ImportResource
@@ -39,8 +44,9 @@ type fakeImporter struct {
 
 func newFakeImporter() *fakeImporter {
 	return &fakeImporter{
-		state:    map[ResourceKey]bool{},
-		failKeys: map[ResourceKey]bool{},
+		state:           map[ResourceKey]bool{},
+		failKeys:        map[ResourceKey]bool{},
+		failInBatchOnly: map[ResourceKey]bool{},
 	}
 }
 
@@ -53,12 +59,24 @@ func (f *fakeImporter) ImportBatch(
 	f.payloads = append(f.payloads, rs)
 	f.nameTable = nameTable
 
+	var nonComponents int
+	for _, r := range rs {
+		if !r.Component {
+			nonComponents++
+		}
+	}
+	isolationCall := nonComponents == 1
+
 	failed := false
 	for _, r := range rs {
 		if r.Component {
 			continue
 		}
 		if f.failKeys[keyOf(r)] {
+			failed = true
+			continue
+		}
+		if f.failInBatchOnly[keyOf(r)] && !isolationCall {
 			failed = true
 			continue
 		}

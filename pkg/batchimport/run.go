@@ -125,22 +125,31 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 			missing = append(missing, r)
 		}
 
+		// An isolation payload is components + [r], so only r can newly land
+		// from it. Run every isolation import first, then read state once:
+		// that single read gives the same verdicts as reading after each
+		// isolation import, at a fraction of the cost.
+		isoErrs := make(map[ResourceKey]error, len(missing))
 		for _, r := range missing {
-			isoErr := imp.ImportBatch(ctx, withComponents(components, r), file.NameTable)
+			isoErrs[keyOf(r)] = imp.ImportBatch(ctx, withComponents(components, r), file.NameTable)
+		}
 
+		if len(missing) > 0 {
 			afterIso, err := imp.ExistingResources(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("reading stack state after isolating %s: %w", r.Name, err)
+				return nil, fmt.Errorf("reading stack state after isolating failures: %w", err)
 			}
-			if afterIso[keyOf(r)] {
-				res.Imported = append(res.Imported, keyOf(r))
-				continue
+			for _, r := range missing {
+				if afterIso[keyOf(r)] {
+					res.Imported = append(res.Imported, keyOf(r))
+					continue
+				}
+				res.Failed = append(res.Failed, Failure{
+					Key: keyOf(r),
+					ID:  r.ID,
+					Err: errText(isoErrs[keyOf(r)], batchErr),
+				})
 			}
-			res.Failed = append(res.Failed, Failure{
-				Key: keyOf(r),
-				ID:  r.ID,
-				Err: errText(isoErr, batchErr),
-			})
 		}
 	}
 
@@ -160,15 +169,18 @@ func withComponents(
 	return out
 }
 
-// errText picks the most specific error text available for a failed resource.
-// The isolation error names one resource, so it beats the batch error.
+// errText describes why a resource is reported as failed. The state fact leads:
+// an import error is unreliable evidence — the SDK returns one even after a
+// successful import when code generation is disabled — so it is attached only
+// as context.
 func errText(isolationErr, batchErr error) string {
+	const base = "resource not present in stack state after import"
 	switch {
 	case isolationErr != nil:
-		return isolationErr.Error()
+		return fmt.Sprintf("%s (last error: %s)", base, isolationErr)
 	case batchErr != nil:
-		return batchErr.Error()
+		return fmt.Sprintf("%s (last error: %s)", base, batchErr)
 	default:
-		return "resource not present in stack state after import"
+		return base
 	}
 }

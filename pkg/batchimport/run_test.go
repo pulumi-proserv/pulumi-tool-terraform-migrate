@@ -208,20 +208,51 @@ func TestRun_IsolatesTheFailingResource(t *testing.T) {
 func TestRun_IsolationCallsCarryComponents(t *testing.T) {
 	t.Parallel()
 
+	file := &ImportFile{
+		NameTable: map[string]string{
+			"comp-a": "urn:pulumi:dev::proj::example:index:Comp::comp-a",
+			"comp-b": "urn:pulumi:dev::proj::example:index:Comp::comp-b",
+		},
+		Resources: []*optimport.ImportResource{
+			{Type: "example:index:Comp", Name: "comp-a", Component: true},
+			{Type: "example:index:Comp", Name: "comp-b", Component: true},
+			{Type: "aws:s3/bucket:Bucket", Name: "res-0", ID: "id-0", Parent: "comp-a"},
+		},
+	}
+
 	f := newFakeImporter()
 	f.failKeys[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-0"}] = true
 
-	_, err := Run(context.Background(), f, testFile(1), Options{BatchSize: 10, Resume: true})
+	_, err := Run(context.Background(), f, file, Options{BatchSize: 10, Resume: true})
 	require.NoError(t, err)
 
 	require.Len(t, f.payloads, 2)
-	var components int
+	var componentNames []string
 	for _, r := range f.payloads[1] {
 		if r.Component {
-			components++
+			componentNames = append(componentNames, r.Name)
 		}
 	}
-	assert.Equal(t, 1, components, "isolation call must still carry components")
+	assert.ElementsMatch(t, []string{"comp-a", "comp-b"}, componentNames,
+		"isolation call must carry every component entry")
+}
+
+func TestRun_ResourceThatFailsInBatchButSucceedsAlone(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.failInBatchOnly[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-1"}] = true
+
+	res, err := Run(context.Background(), f, testFile(3), Options{BatchSize: 3, Resume: true})
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []ResourceKey{
+		{Type: "aws:s3/bucket:Bucket", Name: "res-0"},
+		{Type: "aws:s3/bucket:Bucket", Name: "res-1"},
+		{Type: "aws:s3/bucket:Bucket", Name: "res-2"},
+	}, res.Imported)
+	assert.Empty(t, res.Failed)
+	assert.Equal(t, 2, f.callCount, "one batch call plus one isolation call")
 }
 
 func TestRun_WholeBatchFailsAndEveryResourceIsReported(t *testing.T) {
@@ -256,7 +287,11 @@ func TestRun_ContinuesToLaterBatchesAfterAFailure(t *testing.T) {
 func TestErrText(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "boom", errText(errors.New("boom"), errors.New("batch")))
-	assert.Equal(t, "batch", errText(nil, errors.New("batch")))
+	assert.Equal(t,
+		"resource not present in stack state after import (last error: boom)",
+		errText(errors.New("boom"), errors.New("batch")))
+	assert.Equal(t,
+		"resource not present in stack state after import (last error: batch)",
+		errText(nil, errors.New("batch")))
 	assert.Equal(t, "resource not present in stack state after import", errText(nil, nil))
 }
