@@ -204,7 +204,8 @@ func TestLoadImportFile_PreservesAllFields(t *testing.T) {
     {"type": "example:index:Vpc", "name": "vpc", "component": true},
     {"type": "aws:ec2/vpc:Vpc", "name": "vpc-main", "id": "vpc-abc123",
      "parent": "vpc", "logicalName": "mainVpc", "properties": ["cidrBlock"],
-     "version": "7.0.0", "pluginDownloadUrl": "https://example.invalid"}
+     "version": "7.0.0", "pluginDownloadUrl": "https://example.invalid",
+     "remote": true}
   ]
 }`
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
@@ -226,6 +227,7 @@ func TestLoadImportFile_PreservesAllFields(t *testing.T) {
 	assert.Equal(t, []string{"cidrBlock"}, r.Properties)
 	assert.Equal(t, "7.0.0", r.Version)
 	assert.Equal(t, "https://example.invalid", r.PluginDownloadURL)
+	assert.True(t, r.Remote)
 }
 
 func TestLoadImportFile_Errors(t *testing.T) {
@@ -911,13 +913,21 @@ In `pkg/batchimport/run.go`, replace the batch body — from the `_ = imp.Import
 			missing = append(missing, r)
 		}
 
+		// Import each missing resource alone, then read state ONCE. An
+		// isolation payload is components + one resource, so only that
+		// resource can newly land — a per-resource read would give the same
+		// verdicts at O(batch size) subprocess calls.
+		isoErrs := make(map[ResourceKey]error, len(missing))
 		for _, r := range missing {
-			isoErr := imp.ImportBatch(ctx, withComponents(components, r), file.NameTable)
+			isoErrs[keyOf(r)] = imp.ImportBatch(ctx, withComponents(components, r), file.NameTable)
+		}
 
-			afterIso, err := imp.ExistingResources(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("reading stack state after isolating %s: %w", r.Name, err)
-			}
+		afterIso, err := imp.ExistingResources(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("reading stack state after isolating failures: %w", err)
+		}
+
+		for _, r := range missing {
 			if afterIso[keyOf(r)] {
 				res.Imported = append(res.Imported, keyOf(r))
 				continue
@@ -925,7 +935,7 @@ In `pkg/batchimport/run.go`, replace the batch body — from the `_ = imp.Import
 			res.Failed = append(res.Failed, Failure{
 				Key: keyOf(r),
 				ID:  r.ID,
-				Err: errText(isoErr, batchErr),
+				Err: errText(isoErrs[keyOf(r)], batchErr),
 			})
 		}
 ```
@@ -933,16 +943,19 @@ In `pkg/batchimport/run.go`, replace the batch body — from the `_ = imp.Import
 Then append to the same file:
 
 ```go
-// errText picks the most specific error text available for a failed resource.
-// The isolation error names one resource, so it beats the batch error.
+// errText describes why a resource is reported as failed. The state fact leads:
+// an import error is unreliable evidence — the SDK returns one even after a
+// successful import when code generation is disabled — so it is attached only
+// as context.
 func errText(isolationErr, batchErr error) string {
+	const base = "resource not present in stack state after import"
 	switch {
 	case isolationErr != nil:
-		return isolationErr.Error()
+		return fmt.Sprintf("%s (last error: %s)", base, isolationErr)
 	case batchErr != nil:
-		return batchErr.Error()
+		return fmt.Sprintf("%s (last error: %s)", base, batchErr)
 	default:
-		return "resource not present in stack state after import"
+		return base
 	}
 }
 ```
