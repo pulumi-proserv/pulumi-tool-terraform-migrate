@@ -78,10 +78,31 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 		importable = append(importable, r)
 	}
 
+	existing, err := imp.ExistingResources(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading stack state: %w", err)
+	}
+
+	if opts.Resume {
+		remaining := importable[:0:0]
+		for _, r := range importable {
+			if existing[keyOf(r)] {
+				res.Skipped = append(res.Skipped, keyOf(r))
+				continue
+			}
+			remaining = append(remaining, r)
+		}
+		importable = remaining
+	}
+
 	for _, r := range importable {
 		res.Planned = append(res.Planned, keyOf(r))
 	}
 	res.BatchCount = (len(importable) + opts.BatchSize - 1) / opts.BatchSize
+
+	if opts.DryRun {
+		return res, nil
+	}
 
 	for start := 0; start < len(importable); start += opts.BatchSize {
 		end := min(start+opts.BatchSize, len(importable))

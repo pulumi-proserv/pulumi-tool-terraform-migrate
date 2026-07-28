@@ -90,3 +90,78 @@ func TestRun_BatchSizeDefaults(t *testing.T) {
 	assert.Equal(t, 1, res.BatchCount, "3 resources fit one default-size batch")
 	assert.Equal(t, 1, f.callCount)
 }
+
+func TestRun_ResumeSkipsResourcesAlreadyInState(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.state[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-0"}] = true
+	f.state[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-2"}] = true
+
+	res, err := Run(context.Background(), f, testFile(4), Options{BatchSize: 10, Resume: true})
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []ResourceKey{
+		{Type: "aws:s3/bucket:Bucket", Name: "res-0"},
+		{Type: "aws:s3/bucket:Bucket", Name: "res-2"},
+	}, res.Skipped)
+	assert.ElementsMatch(t, []ResourceKey{
+		{Type: "aws:s3/bucket:Bucket", Name: "res-1"},
+		{Type: "aws:s3/bucket:Bucket", Name: "res-3"},
+	}, res.Imported)
+
+	require.Len(t, f.nonComponentPayloads(), 1)
+	assert.ElementsMatch(t, []ResourceKey{
+		{Type: "aws:s3/bucket:Bucket", Name: "res-1"},
+		{Type: "aws:s3/bucket:Bucket", Name: "res-3"},
+	}, f.nonComponentPayloads()[0], "skipped resources must not be re-imported")
+}
+
+func TestRun_NoResumeImportsEverything(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.state[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-0"}] = true
+
+	res, err := Run(context.Background(), f, testFile(2), Options{BatchSize: 10, Resume: false})
+	require.NoError(t, err)
+
+	assert.Empty(t, res.Skipped)
+	assert.Len(t, res.Imported, 2)
+	assert.Len(t, f.nonComponentPayloads()[0], 2)
+}
+
+func TestRun_ResumeDistinguishesSameNameDifferentType(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.state[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "shared"}] = true
+
+	file := &ImportFile{Resources: []*optimport.ImportResource{
+		{Type: "aws:s3/bucket:Bucket", Name: "shared", ID: "b"},
+		{Type: "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock", Name: "shared", ID: "p"},
+	}}
+
+	res, err := Run(context.Background(), f, file, Options{BatchSize: 10, Resume: true})
+	require.NoError(t, err)
+
+	assert.Equal(t, []ResourceKey{{Type: "aws:s3/bucket:Bucket", Name: "shared"}}, res.Skipped)
+	assert.Equal(t, []ResourceKey{
+		{Type: "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock", Name: "shared"},
+	}, res.Imported)
+}
+
+func TestRun_DryRunImportsNothing(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.state[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-0"}] = true
+
+	res, err := Run(context.Background(), f, testFile(3), Options{BatchSize: 2, Resume: true, DryRun: true})
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, f.callCount, "dry run must not import")
+	assert.Len(t, res.Planned, 2, "res-0 is already in state")
+	assert.Equal(t, 1, res.BatchCount)
+	assert.Empty(t, res.Imported)
+}
