@@ -45,20 +45,33 @@ func TestFormatResult_Failures(t *testing.T) {
 
 	out := formatResult(&batchimport.Result{
 		Imported: []batchimport.ResourceKey{{Type: "aws:ec2/vpc:Vpc", Name: "vpc"}},
-		Failed: []batchimport.Failure{{
-			Key: batchimport.ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "b1"},
-			ID:  "bad-id",
-			Err: "resource does not exist",
-		}},
+		Failed: []batchimport.Failure{
+			{
+				Key: batchimport.ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "b1"},
+				ID:  "bad-id",
+				Err: "resource does not exist",
+			},
+			{
+				Key: batchimport.ResourceKey{Type: "aws:lambda/function:Function", Name: "fn2"},
+				ID:  "arn:aws:lambda:us-west-2:123456789:function:invalid",
+				Err: "InvalidParameterValueException: The role defined for the function cannot be assumed by Lambda.",
+			},
+		},
 		BatchCount: 1,
 	}, false)
 
-	assert.Contains(t, out, "Failed:   1")
+	assert.Contains(t, out, "Failed:   2")
 	assert.Contains(t, out, "FAILED RESOURCES")
+	// First failure assertions
 	assert.Contains(t, out, "b1")
 	assert.Contains(t, out, "aws:s3/bucket:Bucket")
 	assert.Contains(t, out, "bad-id")
 	assert.Contains(t, out, "resource does not exist")
+	// Second failure assertions
+	assert.Contains(t, out, "fn2")
+	assert.Contains(t, out, "aws:lambda/function:Function")
+	assert.Contains(t, out, "arn:aws:lambda:us-west-2:123456789:function:invalid")
+	assert.Contains(t, out, "InvalidParameterValueException")
 }
 
 func TestFormatResult_DryRun(t *testing.T) {
