@@ -15,6 +15,7 @@
 package batchimport
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -301,6 +302,27 @@ func TestRun_PreservesPartialResultsWhenStateReadFails(t *testing.T) {
 		{Type: "aws:s3/bucket:Bucket", Name: "res-0"},
 		{Type: "aws:s3/bucket:Bucket", Name: "res-1"},
 	}, res.Imported, "the first batch's results must be preserved")
+}
+
+func TestRun_ReportsPerBatchProgress(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	bad := ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-1"}
+	f.failKeys[bad] = true
+
+	var progress bytes.Buffer
+	_, err := Run(context.Background(), f, testFile(4), Options{
+		BatchSize: 2,
+		Resume:    true,
+		Progress:  &progress,
+	})
+	require.NoError(t, err)
+
+	out := progress.String()
+	assert.Contains(t, out, "Batch 1/2 (2 resources)")
+	assert.Contains(t, out, "Batch 2/2 (2 resources)")
+	assert.Contains(t, out, "isolating 1 failure(s)")
 }
 
 func TestErrText(t *testing.T) {

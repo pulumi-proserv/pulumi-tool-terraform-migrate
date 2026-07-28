@@ -83,6 +83,7 @@ Examples:
 				BatchSize: batchSize,
 				Resume:    !noResume,
 				DryRun:    dryRun,
+				Progress:  cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				if res != nil {

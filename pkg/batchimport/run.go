@@ -17,6 +17,7 @@ package batchimport
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optimport"
 )
@@ -54,6 +55,9 @@ type Options struct {
 	BatchSize int
 	Resume    bool
 	DryRun    bool
+	// Progress, when non-nil, receives per-batch progress messages as the run
+	// proceeds. When nil, no progress is emitted.
+	Progress io.Writer
 }
 
 // Run imports file's resources in batches.
@@ -107,6 +111,11 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 	for start := 0; start < len(importable); start += opts.BatchSize {
 		end := min(start+opts.BatchSize, len(importable))
 		batch := importable[start:end]
+		batchNum := start/opts.BatchSize + 1
+
+		if opts.Progress != nil {
+			fmt.Fprintf(opts.Progress, "Batch %d/%d (%d resources)\n", batchNum, res.BatchCount, len(batch))
+		}
 
 		// The error is not a verdict; it is captured only for the report.
 		batchErr := imp.ImportBatch(ctx, withComponents(components, batch...), file.NameTable)
@@ -123,6 +132,10 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 				continue
 			}
 			missing = append(missing, r)
+		}
+
+		if len(missing) > 0 && opts.Progress != nil {
+			fmt.Fprintf(opts.Progress, "  isolating %d failure(s)\n", len(missing))
 		}
 
 		// An isolation payload is components + [r], so only r can newly land
