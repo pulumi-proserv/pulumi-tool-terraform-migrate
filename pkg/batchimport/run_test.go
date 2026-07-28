@@ -16,6 +16,7 @@ package batchimport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -164,4 +165,98 @@ func TestRun_DryRunImportsNothing(t *testing.T) {
 	assert.Len(t, res.Planned, 2, "res-0 is already in state")
 	assert.Equal(t, 1, res.BatchCount)
 	assert.Empty(t, res.Imported)
+}
+
+// The SDK returns an error after a successful --generate-code=false import.
+// State, not the error, decides the outcome.
+func TestRun_SucceedsDespiteImportBatchError(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.batchErr = errors.New(
+		"failed to read generated code: open /tmp/pulumi-import-1/generated_code.txt: no such file or directory")
+
+	res, err := Run(context.Background(), f, testFile(4), Options{BatchSize: 2, Resume: true})
+	require.NoError(t, err)
+
+	assert.Len(t, res.Imported, 4)
+	assert.Empty(t, res.Failed)
+	assert.Equal(t, 2, f.callCount, "no isolation pass when everything landed")
+}
+
+func TestRun_IsolatesTheFailingResource(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	bad := ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-1"}
+	f.failKeys[bad] = true
+
+	res, err := Run(context.Background(), f, testFile(4), Options{BatchSize: 4, Resume: true})
+	require.NoError(t, err)
+
+	assert.Len(t, res.Imported, 3)
+	require.Len(t, res.Failed, 1)
+	assert.Equal(t, bad, res.Failed[0].Key)
+	assert.Equal(t, "id-1", res.Failed[0].ID)
+	assert.Contains(t, res.Failed[0].Err, "resource does not exist")
+
+	assert.Equal(t, 2, f.callCount, "one batch call plus one isolation call")
+	assert.Equal(t, []ResourceKey{bad}, f.nonComponentPayloads()[1],
+		"isolation call imports exactly the missing resource")
+}
+
+func TestRun_IsolationCallsCarryComponents(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.failKeys[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-0"}] = true
+
+	_, err := Run(context.Background(), f, testFile(1), Options{BatchSize: 10, Resume: true})
+	require.NoError(t, err)
+
+	require.Len(t, f.payloads, 2)
+	var components int
+	for _, r := range f.payloads[1] {
+		if r.Component {
+			components++
+		}
+	}
+	assert.Equal(t, 1, components, "isolation call must still carry components")
+}
+
+func TestRun_WholeBatchFailsAndEveryResourceIsReported(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	for i := 0; i < 3; i++ {
+		f.failKeys[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: fmt.Sprintf("res-%d", i)}] = true
+	}
+
+	res, err := Run(context.Background(), f, testFile(3), Options{BatchSize: 3, Resume: true})
+	require.NoError(t, err)
+
+	assert.Empty(t, res.Imported)
+	assert.Len(t, res.Failed, 3)
+	assert.Equal(t, 4, f.callCount, "one batch call plus three isolation calls")
+}
+
+func TestRun_ContinuesToLaterBatchesAfterAFailure(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeImporter()
+	f.failKeys[ResourceKey{Type: "aws:s3/bucket:Bucket", Name: "res-0"}] = true
+
+	res, err := Run(context.Background(), f, testFile(4), Options{BatchSize: 2, Resume: true})
+	require.NoError(t, err)
+
+	assert.Len(t, res.Failed, 1)
+	assert.Len(t, res.Imported, 3, "batches after the failure still run")
+}
+
+func TestErrText(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "boom", errText(errors.New("boom"), errors.New("batch")))
+	assert.Equal(t, "batch", errText(nil, errors.New("batch")))
+	assert.Equal(t, "resource not present in stack state after import", errText(nil, nil))
 }

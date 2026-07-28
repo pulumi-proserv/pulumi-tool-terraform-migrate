@@ -108,19 +108,39 @@ func Run(ctx context.Context, imp Importer, file *ImportFile, opts Options) (*Re
 		end := min(start+opts.BatchSize, len(importable))
 		batch := importable[start:end]
 
-		// The error is explicitly discarded: it is not evidence either way.
-		// Task 5 captures it for the failure report.
-		_ = imp.ImportBatch(ctx, withComponents(components, batch...), file.NameTable)
+		// The error is not a verdict; it is captured only for the report.
+		batchErr := imp.ImportBatch(ctx, withComponents(components, batch...), file.NameTable)
 
 		after, err := imp.ExistingResources(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("reading stack state after batch: %w", err)
 		}
 
+		var missing []*optimport.ImportResource
 		for _, r := range batch {
 			if after[keyOf(r)] {
 				res.Imported = append(res.Imported, keyOf(r))
+				continue
 			}
+			missing = append(missing, r)
+		}
+
+		for _, r := range missing {
+			isoErr := imp.ImportBatch(ctx, withComponents(components, r), file.NameTable)
+
+			afterIso, err := imp.ExistingResources(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("reading stack state after isolating %s: %w", r.Name, err)
+			}
+			if afterIso[keyOf(r)] {
+				res.Imported = append(res.Imported, keyOf(r))
+				continue
+			}
+			res.Failed = append(res.Failed, Failure{
+				Key: keyOf(r),
+				ID:  r.ID,
+				Err: errText(isoErr, batchErr),
+			})
 		}
 	}
 
@@ -138,4 +158,17 @@ func withComponents(
 	out = append(out, components...)
 	out = append(out, rs...)
 	return out
+}
+
+// errText picks the most specific error text available for a failed resource.
+// The isolation error names one resource, so it beats the batch error.
+func errText(isolationErr, batchErr error) string {
+	switch {
+	case isolationErr != nil:
+		return isolationErr.Error()
+	case batchErr != nil:
+		return batchErr.Error()
+	default:
+		return "resource not present in stack state after import"
+	}
 }
