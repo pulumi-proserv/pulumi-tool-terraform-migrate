@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/pulumi/opentofu/encryption"
-	"github.com/pulumi/pulumi-terraform-bridge/v3/pkg/vendored/opentofu/configs/configschema"
 	"github.com/pulumi/opentofu/states/statefile"
+	"github.com/pulumi/pulumi-terraform-bridge/v3/pkg/vendored/opentofu/configs/configschema"
 	"github.com/pulumi/pulumi-terraform-bridge/v3/pkg/vendored/opentofu/providers"
 	"github.com/pulumi/pulumi-tool-terraform-migrate/pkg/tfprovider"
 	"github.com/stretchr/testify/require"
@@ -75,7 +75,7 @@ func randomStringBlock() *configschema.Block {
 func newMockRandomProvider() *mockProvider {
 	block := randomStringBlock()
 	return &mockProvider{
-		name:    "random",
+		name:     "random",
 		version_: "3.6.0",
 		schema: providers.GetProviderSchemaResponse{
 			ResourceTypes: map[string]providers.Schema{

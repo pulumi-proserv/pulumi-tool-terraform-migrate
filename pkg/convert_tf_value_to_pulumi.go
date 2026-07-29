@@ -82,12 +82,6 @@ func ConvertTFValueToPulumiValue(
 		return nil, fmt.Errorf("failed to ensure secrets: %w", err)
 	}
 
-	// TODO: fix raw state deltas
-	// schemaType := bridge.ImpliedType(res.Schema(), false)
-	// if err := tfbridge.RawStateInjectDelta(context.TODO(), res.Schema(), pulumiResource.Fields, props, valueshim.FromCtyType(schemaType), instanceState); err != nil {
-	// 	return nil, err
-	// }
-
 	return secretedProps, nil
 }
 

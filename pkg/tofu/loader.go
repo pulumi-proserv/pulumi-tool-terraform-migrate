@@ -132,7 +132,7 @@ func LoadTerraformState(ctx context.Context, opts LoadTerraformStateOptions) (fi
 
 	if dotTerraformExists {
 		if err := os.Rename(dotTerraform, dotTerraformBak); err != nil {
-			return nil, fmt.Errorf("Error backing up .terraform folder; %w", err)
+			return nil, fmt.Errorf("error backing up .terraform folder; %w", err)
 		}
 	}
 
@@ -142,7 +142,7 @@ func LoadTerraformState(ctx context.Context, opts LoadTerraformStateOptions) (fi
 
 		if dotTerraformExists {
 			if err := os.Rename(dotTerraformBak, dotTerraform); err != nil {
-				err = fmt.Errorf("Error restoring .terraform backup; %w", err)
+				err = fmt.Errorf("error restoring .terraform backup; %w", err)
 				finalError = errors.Join(finalError, err)
 			}
 		}

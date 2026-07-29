@@ -66,10 +66,10 @@ type InstallProviderResult struct {
 //	// result.BinaryPath is the path to pulumi-resource-random binary
 func InstallProvider(ctx context.Context, opts InstallProviderOptions) (*InstallProviderResult, error) {
 	if opts.Name == "" {
-		return nil, fmt.Errorf("Name is required in InstallProviderOptions")
+		return nil, fmt.Errorf("name is required in InstallProviderOptions")
 	}
 	if opts.Version == "" {
-		return nil, fmt.Errorf("Version is required in InstallProviderOptions")
+		return nil, fmt.Errorf("version is required in InstallProviderOptions")
 	}
 
 	// Parse the version

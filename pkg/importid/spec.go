@@ -24,29 +24,29 @@ import (
 type Role string
 
 const (
-	RoleFunction   Role = "function"
-	RoleStatement  Role = "statement"
-	RoleRestApi    Role = "restApi"
-	RoleID         Role = "id"
-	RoleResource   Role = "resource"
-	RoleHTTP       Role = "httpMethod"
-	RoleUsagePlan  Role = "usagePlan"
-	RoleKey        Role = "key"
-	RoleUserPool   Role = "userPool"
-	RoleSubnet     Role = "subnet"
-	RoleRouteTbl   Role = "routeTable"
-	RoleServer     Role = "server"
-	RoleUser       Role = "user"
-	RoleQualifier  Role = "qualifier"
-	RoleListener   Role = "listener"
-	RoleCert       Role = "certificate"
-	RoleBucket     Role = "bucket"
-	RoleQueue      Role = "queue"
-	RoleHostZone   Role = "hostedZone"
-	RoleName       Role = "name"
-	RoleType       Role = "recordType"
-	RoleSetID      Role = "setIdentifier"
-	RoleStage      Role = "stage"
+	RoleFunction  Role = "function"
+	RoleStatement Role = "statement"
+	RoleRestApi   Role = "restApi"
+	RoleID        Role = "id"
+	RoleResource  Role = "resource"
+	RoleHTTP      Role = "httpMethod"
+	RoleUsagePlan Role = "usagePlan"
+	RoleKey       Role = "key"
+	RoleUserPool  Role = "userPool"
+	RoleSubnet    Role = "subnet"
+	RoleRouteTbl  Role = "routeTable"
+	RoleServer    Role = "server"
+	RoleUser      Role = "user"
+	RoleQualifier Role = "qualifier"
+	RoleListener  Role = "listener"
+	RoleCert      Role = "certificate"
+	RoleBucket    Role = "bucket"
+	RoleQueue     Role = "queue"
+	RoleHostZone  Role = "hostedZone"
+	RoleName      Role = "name"
+	RoleType      Role = "recordType"
+	RoleSetID     Role = "setIdentifier"
+	RoleStage     Role = "stage"
 
 	RoleScalingTargetID Role = "scalingTargetId"
 	RoleEcsID           Role = "ecsId"
@@ -75,12 +75,12 @@ type IDSpec struct {
 // Specs is keyed by Pulumi type token. Only pure-composition types appear here;
 // AWS-lookup types are pre-resolved in the digest step.
 var Specs = map[string]IDSpec{
-	"aws:lambda/permission:Permission":                               {Classic: []Role{RoleFunction, RoleStatement}, ClassicDelim: "/"},
-	"aws:apigateway/resource:Resource":                               {Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleID}, NativeDelim: "|"},
-	"aws:apigateway/deployment:Deployment":                           {Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/", Native: []Role{RoleID, RoleRestApi}, NativeDelim: "|"}, // native reversed
-	"aws:apigateway/method:Method":                                   {Classic: []Role{RoleRestApi, RoleResource, RoleHTTP}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleResource, RoleHTTP}, NativeDelim: "|"},
-	"aws:apigateway/usagePlanKey:UsagePlanKey":                       {Classic: []Role{RoleUsagePlan, RoleKey}, ClassicDelim: "/", Native: []Role{RoleUsagePlan, RoleKey}, NativeDelim: "|"},
-	"aws:apigateway/stage:Stage":                                     {Native: []Role{RoleRestApi, RoleStage}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleStage}, ClassicDelim: "/"},
+	"aws:lambda/permission:Permission":         {Classic: []Role{RoleFunction, RoleStatement}, ClassicDelim: "/"},
+	"aws:apigateway/resource:Resource":         {Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleID}, NativeDelim: "|"},
+	"aws:apigateway/deployment:Deployment":     {Classic: []Role{RoleRestApi, RoleID}, ClassicDelim: "/", Native: []Role{RoleID, RoleRestApi}, NativeDelim: "|"}, // native reversed
+	"aws:apigateway/method:Method":             {Classic: []Role{RoleRestApi, RoleResource, RoleHTTP}, ClassicDelim: "/", Native: []Role{RoleRestApi, RoleResource, RoleHTTP}, NativeDelim: "|"},
+	"aws:apigateway/usagePlanKey:UsagePlanKey": {Classic: []Role{RoleUsagePlan, RoleKey}, ClassicDelim: "/", Native: []Role{RoleUsagePlan, RoleKey}, NativeDelim: "|"},
+	"aws:apigateway/stage:Stage":               {Native: []Role{RoleRestApi, RoleStage}, NativeDelim: "|", Classic: []Role{RoleRestApi, RoleStage}, ClassicDelim: "/"},
 	// Authorizer import ID is RestApiId/<authorizer-id>, where the authorizer id
 	// is the resource's physical id (exposed as CFN "Id") — there is no
 	// "AuthorizerId" template property. Same shape as Resource/Deployment.

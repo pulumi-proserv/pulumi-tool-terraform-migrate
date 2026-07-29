@@ -48,7 +48,7 @@ type StateUpgrader struct {
 func NewStateUpgrader(versions map[string]string) *StateUpgrader {
 	return &StateUpgrader{
 		versions:        versions,
-		providers:        make(map[string]tfprovider.Provider),
+		providers:       make(map[string]tfprovider.Provider),
 		providerFactory: tfprovider.LoadProvider,
 	}
 }
@@ -58,7 +58,7 @@ func NewStateUpgrader(versions map[string]string) *StateUpgrader {
 func NewStateUpgraderWithFactory(versions map[string]string, factory ProviderFactory) *StateUpgrader {
 	return &StateUpgrader{
 		versions:        versions,
-		providers:        make(map[string]tfprovider.Provider),
+		providers:       make(map[string]tfprovider.Provider),
 		providerFactory: factory,
 	}
 }

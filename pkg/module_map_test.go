@@ -555,9 +555,9 @@ func TestConfigEntry_WorkspaceVarsSensitivity(t *testing.T) {
 		value     string
 		sensitive bool
 	}{
-		{"db_timeout", "30", false},              // non-sensitive, non-empty → plain config
-		{"api_key", "sk-abc123", true},            // sensitive, non-empty → secret (TFC behavior)
-		{"redacted_password", "", true},            // sensitive, empty → skip (Scalr behavior)
+		{"db_timeout", "30", false},                  // non-sensitive, non-empty → plain config
+		{"api_key", "sk-abc123", true},               // sensitive, non-empty → secret (TFC behavior)
+		{"redacted_password", "", true},              // sensitive, empty → skip (Scalr behavior)
 		{"oauth_base_url", "https://auth.co", false}, // non-sensitive → plain config
 	}
 

@@ -200,8 +200,8 @@ func TestPatchStateFromCFN_LocalZipAssetPatch(t *testing.T) {
 	stateData, err := json.Marshal(state)
 	require.NoError(t, err)
 
-	kind := 2         // FileArchive (bridge AssetTranslationKind)
-	format := 3        // ZIPArchive
+	kind := 2   // FileArchive (bridge AssetTranslationKind)
+	format := 3 // ZIPArchive
 	nameMap := map[string]*ModuleResource{
 		"myfunction": {
 			TerraformAddress: "myfunction",

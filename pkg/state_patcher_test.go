@@ -95,7 +95,7 @@ func TestPatchState_PatchesFromDigest(t *testing.T) {
 				ImportID:         "arn:aws:secretsmanager:us-east-1:123:secret:my-secret",
 				Attributes: map[string]interface{}{
 					"recovery_window_in_days": float64(0),
-					"name":                   "my-secret",
+					"name":                    "my-secret",
 				},
 			},
 		},
@@ -106,7 +106,7 @@ func TestPatchState_PatchesFromDigest(t *testing.T) {
 		Fields: map[string]FieldCategory{
 			"secret:Secret": {
 				NotRead: map[string]FieldInfo{
-					"recoveryWindowInDays":      {Default: float64(30)},
+					"recoveryWindowInDays":        {Default: float64(30)},
 					"forceOverwriteReplicaSecret": {Default: false},
 				},
 			},
@@ -121,7 +121,7 @@ func TestPatchState_PatchesFromDigest(t *testing.T) {
 	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
-	assert.Equal(t, 1, result.FieldsFromDigest) // recovery_window_in_days=0 from digest
+	assert.Equal(t, 1, result.FieldsFromDigest)   // recovery_window_in_days=0 from digest
 	assert.Equal(t, 1, result.FieldsFromDefaults) // forceOverwriteReplicaSecret=false from default
 
 	// Verify the patched value
@@ -130,7 +130,7 @@ func TestPatchState_PatchesFromDigest(t *testing.T) {
 	resources := patchedState["deployment"].(map[string]interface{})["resources"].([]interface{})
 	r := resources[0].(map[string]interface{})
 	inputs := r["inputs"].(map[string]interface{})
-	assert.Equal(t, float64(0), inputs["recoveryWindowInDays"]) // from digest, not default 30
+	assert.Equal(t, float64(0), inputs["recoveryWindowInDays"])   // from digest, not default 30
 	assert.Equal(t, false, inputs["forceOverwriteReplicaSecret"]) // from default
 }
 
@@ -155,7 +155,7 @@ func TestPatchState_OutputStaleBoolean(t *testing.T) {
 						// forceDetachPolicies is nil (not present) — not_read field
 					},
 					"outputs": map[string]interface{}{
-						"name":                 "my-role",
+						"name":                "my-role",
 						"forceDetachPolicies": false, // bridge applied schema default
 					},
 				},
@@ -174,7 +174,7 @@ func TestPatchState_OutputStaleBoolean(t *testing.T) {
 				ImportID:         "my-role",
 				Attributes: map[string]interface{}{
 					"force_detach_policies": true,
-					"name":                 "my-role",
+					"name":                  "my-role",
 				},
 			},
 		},
@@ -398,7 +398,7 @@ func TestPatchState_ConformToDelta_NoDeltaPassthrough(t *testing.T) {
 				ImportID:         "my-role",
 				Attributes: map[string]interface{}{
 					"force_detach_policies": true,
-					"name":                 "my-role",
+					"name":                  "my-role",
 				},
 			},
 		},
@@ -594,7 +594,7 @@ func TestPatchState_SkipsSensitive(t *testing.T) {
 				TranslatedURN:    "urn:pulumi:dev::proj::aws:rds/cluster:Cluster::my-cluster",
 				TerraformAddress: "aws_rds_cluster.my_cluster",
 				Attributes: map[string]interface{}{
-					"master_password":  "(sensitive)",
+					"master_password":   "(sensitive)",
 					"apply_immediately": nil,
 				},
 			},
@@ -618,8 +618,8 @@ func TestPatchState_SkipsSensitive(t *testing.T) {
 
 	_, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, nil, "")
 	require.NoError(t, err)
-	assert.Equal(t, 1, result.SkippedSensitive)       // masterPassword
-	assert.Equal(t, 1, result.FieldsFromDefaults)      // applyImmediately=false
+	assert.Equal(t, 1, result.SkippedSensitive)   // masterPassword
+	assert.Equal(t, 1, result.FieldsFromDefaults) // applyImmediately=false
 }
 
 func TestPatchState_ResolveSensitiveFromConfig(t *testing.T) {
@@ -676,8 +676,8 @@ func TestPatchState_ResolveSensitiveFromConfig(t *testing.T) {
 	patched, result, err := PatchState(stateData, &digest, fields, nil, resourceMappings, configSecrets, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
-	assert.Equal(t, 1, result.FieldsFromDigest)   // resolved from config
-	assert.Equal(t, 0, result.SkippedSensitive)    // none skipped
+	assert.Equal(t, 1, result.FieldsFromDigest) // resolved from config
+	assert.Equal(t, 0, result.SkippedSensitive) // none skipped
 
 	// Verify the patched value is wrapped in the secret sentinel.
 	var patchedState map[string]interface{}
@@ -964,7 +964,7 @@ func TestPatchState_InjectsAssetDelta(t *testing.T) {
 					"custom": true,
 					"id":     "bucket/index.html",
 					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
-					"inputs":  map[string]interface{}{"source": "swagger-ui/index.html"},
+					"inputs": map[string]interface{}{"source": "swagger-ui/index.html"},
 					"outputs": map[string]interface{}{
 						"source": "swagger-ui/index.html",
 						"__pulumi_raw_state_delta": map[string]interface{}{
@@ -1040,7 +1040,7 @@ func TestPatchState_InjectsArchiveDelta(t *testing.T) {
 	require.NoError(t, os.MkdirAll(lambdaDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(lambdaDir, "index.py"), []byte("print('hello')"), 0o644))
 
-	assetKind := 1    // FileArchive
+	assetKind := 1     // FileArchive
 	archiveFormat := 3 // ZIPArchive
 	state := map[string]interface{}{
 		"version": 3,
@@ -1052,7 +1052,7 @@ func TestPatchState_InjectsArchiveDelta(t *testing.T) {
 					"custom": true,
 					"id":     "my-fn",
 					"parent": "urn:pulumi:dev::proj::pulumi:pulumi:Stack::proj-dev",
-					"inputs":  map[string]interface{}{},
+					"inputs": map[string]interface{}{},
 					"outputs": map[string]interface{}{
 						"__pulumi_raw_state_delta": map[string]interface{}{
 							"obj": map[string]interface{}{
@@ -1115,8 +1115,8 @@ func TestPatchState_InjectsArchiveDelta(t *testing.T) {
 	codeDelta := ps["code"].(map[string]interface{})
 	assetEntry := codeDelta["asset"].(map[string]interface{})
 
-	assert.Equal(t, float64(1), assetEntry["kind"])            // FileArchive
-	assert.Equal(t, float64(3), assetEntry["archiveFormat"])    // ZIPArchive
+	assert.Equal(t, float64(1), assetEntry["kind"])          // FileArchive
+	assert.Equal(t, float64(3), assetEntry["archiveFormat"]) // ZIPArchive
 	assert.Equal(t, "source_code_hash", assetEntry["hashField"])
 
 	// The code input sentinel should have a hash computed by the Pulumi archive package.
@@ -1535,8 +1535,8 @@ func TestPatchStateFromSchema_SensitiveResolution(t *testing.T) {
 	patched, result, err := PatchStateFromSchema(stateData, digest, providers, typeMap, nil, resourceMappings, configSecrets, "")
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Patched)
-	assert.Equal(t, 1, result.FieldsFromDigest)  // resolved from config
-	assert.Equal(t, 0, result.SkippedSensitive)   // none skipped
+	assert.Equal(t, 1, result.FieldsFromDigest) // resolved from config
+	assert.Equal(t, 0, result.SkippedSensitive) // none skipped
 
 	// Verify the patched value is wrapped in the secret sentinel.
 	var patchedState map[string]interface{}

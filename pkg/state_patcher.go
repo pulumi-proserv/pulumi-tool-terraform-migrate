@@ -100,15 +100,15 @@ type PatchStateResult struct {
 // Both fields-based and schema-based paths build these, then delegate to
 // the shared patchResourceFields function.
 type patchFieldDescriptor struct {
-	PulumiName             string
-	TFName                 string
-	Default                interface{} // nil means no default
-	HasDefault             bool
-	SuppressDefaultFallback bool // when true, don't use Default as fallback (digest values still patched)
-	AssetType              string // "FileAsset", "FileArchive", or ""
-	AssetKind              *int
-	ArchiveFormat          *int
-	HashField              string
+	PulumiName              string
+	TFName                  string
+	Default                 interface{} // nil means no default
+	HasDefault              bool
+	SuppressDefaultFallback bool   // when true, don't use Default as fallback (digest values still patched)
+	AssetType               string // "FileAsset", "FileArchive", or ""
+	AssetKind               *int
+	ArchiveFormat           *int
+	HashField               string
 	// ZipAsFileArchive: when true, a .zip source is emitted as a file-based
 	// FileArchive sentinel (matching a program's FileArchive("x.zip")); when
 	// false (the TF default) a .zip is emitted as an embedded AssetArchive. Set
@@ -119,28 +119,28 @@ type patchFieldDescriptor struct {
 // tfToPulumiField maps TF snake_case attribute names to Pulumi camelCase field names
 // for known not_read fields.
 var tfToPulumiField = map[string]string{
-	"acl":                                "acl",
-	"apply_immediately":                  "applyImmediately",
-	"certificate_body":                   "certificateBody",
-	"certificate_chain":                  "certificateChain",
-	"filename":                           "code",
-	"confirmation_timeout_in_minutes":    "confirmationTimeoutInMinutes",
-	"content":                            "content",
-	"endpoint_auto_confirms":             "endpointAutoConfirms",
-	"force_destroy":                      "forceDestroy",
-	"force_detach_policies":              "forceDetachPolicies",
-	"force_overwrite_replica_secret":     "forceOverwriteReplicaSecret",
-	"master_password":                    "masterPassword",
-	"parameter":                          "parameters",
-	"path":                               "path",
-	"private_key":                        "privateKey",
-	"publish":                            "publish",
-	"recovery_window_in_days":            "recoveryWindowInDays",
-	"revoke_rules_on_delete":             "revokeRulesOnDelete",
-	"secret_string":                      "secretString",
-	"skip_destroy":                       "skipDestroy",
-	"source":                             "source",
-	"wait_for_steady_state":              "waitForSteadyState",
+	"acl":                             "acl",
+	"apply_immediately":               "applyImmediately",
+	"certificate_body":                "certificateBody",
+	"certificate_chain":               "certificateChain",
+	"filename":                        "code",
+	"confirmation_timeout_in_minutes": "confirmationTimeoutInMinutes",
+	"content":                         "content",
+	"endpoint_auto_confirms":          "endpointAutoConfirms",
+	"force_destroy":                   "forceDestroy",
+	"force_detach_policies":           "forceDetachPolicies",
+	"force_overwrite_replica_secret":  "forceOverwriteReplicaSecret",
+	"master_password":                 "masterPassword",
+	"parameter":                       "parameters",
+	"path":                            "path",
+	"private_key":                     "privateKey",
+	"publish":                         "publish",
+	"recovery_window_in_days":         "recoveryWindowInDays",
+	"revoke_rules_on_delete":          "revokeRulesOnDelete",
+	"secret_string":                   "secretString",
+	"skip_destroy":                    "skipDestroy",
+	"source":                          "source",
+	"wait_for_steady_state":           "waitForSteadyState",
 }
 
 // pulumiToTFField is the reverse of tfToPulumiField.
@@ -236,13 +236,7 @@ func buildNotReadByType(fieldsFile *FieldsFile) map[string]map[string]notReadFie
 		if len(cat.NotRead) > 0 {
 			fields := make(map[string]notReadFieldMeta, len(cat.NotRead))
 			for pulumiField, info := range cat.NotRead {
-				fields[pulumiField] = notReadFieldMeta{
-					Default:       info.Default,
-					Asset:         info.Asset,
-					AssetKind:     info.AssetKind,
-					ArchiveFormat: info.ArchiveFormat,
-					HashField:     info.HashField,
-				}
+				fields[pulumiField] = notReadFieldMeta(info)
 			}
 			notReadByType[fullType] = fields
 			st := shortPulumiType(fullType)
@@ -956,9 +950,9 @@ func buildAssetSentinel(absPath, assetType string, zipAsFileArchive bool) (map[s
 	hash := hex.EncodeToString(h.Sum(nil))
 
 	return map[string]interface{}{
-		sigKey:  assetSig,
-		"hash":  hash,
-		"path":  absPath,
+		sigKey: assetSig,
+		"hash": hash,
+		"path": absPath,
 	}, nil
 }
 
@@ -1468,7 +1462,7 @@ func validateRecover(urn string, outputsRaw map[string]interface{}) error {
 		return fmt.Errorf("UnmarshalRawStateDelta: %w", err)
 	}
 	if _, err := rsd.Recover(outputsPV); err != nil {
-		return fmt.Errorf("Recover: %w", err)
+		return fmt.Errorf("recover: %w", err)
 	}
 	return nil
 }

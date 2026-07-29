@@ -1,8 +1,12 @@
 bin
+dist
 .terraform
 **/terraform.tfstate.backup
 pulumi-tool-terraform-migrate
 **/.terraform.lock.hcl
+
+# Local direnv config (copy from .envrc.example)
+.envrc
 
 go.work
 go.work.sum

@@ -109,5 +109,5 @@ func (p *builtinTerraformProvider) CallFunction(req providers.CallFunctionReques
 	return providers.CallFunctionResponse{}
 }
 
-func (p *builtinTerraformProvider) Stop() error { return nil }
+func (p *builtinTerraformProvider) Stop() error  { return nil }
 func (p *builtinTerraformProvider) Close() error { return nil }

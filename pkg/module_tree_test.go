@@ -151,7 +151,6 @@ func TestBuildComponentTree_SanitizationCollision(t *testing.T) {
 	require.Contains(t, err.Error(), "collision")
 }
 
-
 func TestParseModuleSegments(t *testing.T) {
 	tests := []struct {
 		address  string

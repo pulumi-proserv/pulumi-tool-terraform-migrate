@@ -307,6 +307,3 @@ func moduleSegmentsFromAddr(addr addrs.ModuleInstance) []moduleSegment {
 	}
 	return segments
 }
-
-
-

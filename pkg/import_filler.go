@@ -93,9 +93,9 @@ func FillImportFile(digest *ModuleMap, importFile *ImportFile, moduleMappings, r
 	}
 
 	// Phase 2: Group remaining import entries by parent for module-level matching.
-	byParent := map[string][]*ImportEntry{}    // parentName -> children
-	var orphans []*ImportEntry                  // entries with no parent
-	componentNames := map[string]bool{}         // track component entries
+	byParent := map[string][]*ImportEntry{} // parentName -> children
+	var orphans []*ImportEntry              // entries with no parent
+	componentNames := map[string]bool{}     // track component entries
 
 	for i := range importFile.Resources {
 		entry := &importFile.Resources[i]

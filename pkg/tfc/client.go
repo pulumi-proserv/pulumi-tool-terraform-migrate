@@ -35,7 +35,7 @@ type Client struct {
 type WorkspaceVariable struct {
 	Key       string `json:"key"`
 	Value     string `json:"value"`
-	Category  string `json:"category"`  // "terraform" or "env"
+	Category  string `json:"category"` // "terraform" or "env"
 	HCL       bool   `json:"hcl"`
 	Sensitive bool   `json:"sensitive"`
 }
