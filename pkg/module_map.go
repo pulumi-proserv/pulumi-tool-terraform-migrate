@@ -636,7 +636,7 @@ func DiscoverSensitiveSecrets(state *states.State, projectName string) ([]Sensit
 //
 // Terraform addresses like:
 //
-//	module.capture_secrets["dmvhm-capture-service-develop"].aws_secretsmanager_secret_version.this["dmvhm-capture-service-develop/cap_client_oauth"]
+//	module.console_secrets["mysvc-console-service-develop"].aws_secretsmanager_secret_version.this["mysvc-console-service-develop/cap_client_oauth"]
 //
 // are shortened by:
 //  1. Stripping all "module." prefixes
@@ -644,7 +644,7 @@ func DiscoverSensitiveSecrets(state *states.State, projectName string) ([]Sensit
 //  3. Stripping generic resource names like "this", "ssm_parameters"
 //  4. Deduplicating for_each keys that repeat between module and resource levels
 //
-// The result is a human-readable key like "capture_secrets_cap_client_oauth_secret_string".
+// The result is a human-readable key like "console_secrets_cap_client_oauth_secret_string".
 func flattenAddress(address, attribute string) string {
 	clean := strings.NewReplacer(
 		"\"", "",

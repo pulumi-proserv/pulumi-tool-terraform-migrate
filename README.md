@@ -5,9 +5,10 @@ This is a fork of `pulumi/pulumi-tool-terraform-migrate` that extends the tool w
 - **`tf-digest`** — Digests TF sources + state into an agent-safe JSON sidecar, auto-discovers secrets, and sets them as Pulumi stack config
 - **`import-id-match`** — Fills `pulumi preview --import-file` skeleton with import IDs from the digest, matching TF modules to Pulumi components via mappings
 - **`patch-state`** — Patches imported Pulumi state with field values the cloud API doesn't return (write-only fields, IaC-only defaults, asset sentinels), eliminating post-import diffs
+- **`import`** — Imports a prepared import file in batches, isolating per-resource failures so one run reports every bad import ID
 - **`set-secrets`** — Extracts specific secret values from TF state and sets them as Pulumi config secrets
 
-These commands are designed to work together in a pipeline: `tf-digest` → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview.
+These commands are designed to work together in a pipeline: `tf-digest` → `import-id-match` → `import` (or `pulumi import` directly) → `patch-state` → zero-diff preview.
 
 For robust approaches to migration please see the
 [official documentation](https://www.pulumi.com/docs/iac/guides/migration/migrating-to-pulumi/from-terraform/).
@@ -64,6 +65,20 @@ To proceed with the migration, import the state into your Pulumi stack, feed the
 produce Pulumi sources that translate the Terraform sources. Instructing the LLM to aim for a clean `pulumi preview`
 helps is to fix discrepancies between code and state and get accurate results.
 
+## Agent skills
+
+The `skills/` directory holds agent skills that drive these commands end to end.
+Point your agent harness at them (or copy the directories into wherever it loads
+skills from):
+
+| Skill | Purpose |
+|---|---|
+| `pulumi-terraform-workspace-migration` | Orchestrates a full Terraform workspace migration: `tf-digest` → components → `import-id-match` → `pulumi import` → `patch-state` → zero-diff preview → staged first `up`. Uses the `import` command for batched, failure-isolating imports. |
+| `pulumi-terraform-module-to-component` | Converts a single Terraform module into a Pulumi ComponentResource, including the logical-naming rule `import-id-match` depends on. |
+| `cdk-to-pulumi-classic` | Migrates a deployed CDK app / CloudFormation stack to hand-authored Pulumi on the classic provider, via `digest cfn` / `resolve cfn` / `patch-state cfn`. |
+| `cdk-construct-to-component` | Converts CDK constructs into Pulumi ComponentResources for that migration. |
+| `pulumi-component-authoring` | Shared foundation for both component skills: interface design, IAM policy documents, packaging, publishing, smoke tests. |
+
 ## Migration workflow
 
 The `tf-digest` and `import-id-match` commands work together to automate Pulumi
@@ -97,7 +112,7 @@ resource imports from Terraform state. The end-to-end flow looks like this:
                                     │
                                     ▼
                         ┌───────────────────────┐
-                        │  pulumi import        │
+                        │  import               │
                         │  --file filled-       │
                         │  import.json          │
                         └───────────────────────┘
@@ -124,13 +139,15 @@ pulumi preview --import-file import.json
 pulumi plugin run terraform-migrate -- import-id-match \
   --digest tf-digest.json \
   --import-file import.json \
-  --map 'module.caas_rds=caas_rds' \
-  --map 'module.capture_ui["dmvhm"]=capture_ui["dmvhm"]' \
-  --map 'module.lambda_vpc["dmvhm"]=lambda_vpc-dmvhm' \
+  --map 'module.core_rds=core_rds' \
+  --map 'module.console_ui["mysvc"]=console_ui["mysvc"]' \
+  --map 'module.lambda_vpc["mysvc"]=lambda_vpc-mysvc' \
   --out filled-import.json
 
-# 4. Import resources into the Pulumi stack
-pulumi import --file filled-import.json
+# 4. Import resources into the Pulumi stack, in batches, isolating failures
+pulumi plugin run terraform-migrate -- import \
+  --file filled-import.json \
+  --project-dir . --stack dev
 ```
 
 ---
@@ -156,7 +173,7 @@ pulumi-tool-terraform-migrate tf-digest \
 Sensitive attributes in state are automatically discovered and set as encrypted
 Pulumi config secrets via `pulumi config set --secret`. Use `--skip-secrets` to
 opt out. Config keys are derived from the terraform address
-(e.g. `module_rds_dmvhm_aws_db_instance_main_password`).
+(e.g. `module_rds_mysvc_aws_db_instance_main_password`).
 
 ### `tf-digest` internal flow
 
@@ -263,8 +280,8 @@ The `import-id-match` command solves this by:
 pulumi-tool-terraform-migrate import-id-match \
   --digest tf-digest.json \
   --import-file import.json \
-  --map 'module.caas_rds=caas_rds' \
-  --map 'module.capture_ui["dmvhm"]=capture_ui["dmvhm"]' \
+  --map 'module.core_rds=core_rds' \
+  --map 'module.console_ui["mysvc"]=console_ui["mysvc"]' \
   --mapping-file mappings.yaml \
   --out filled-import.json
 ```
@@ -286,9 +303,9 @@ CLI flags override file entries).
 
 **CLI flags** (repeatable):
 ```
---map 'module.caas_rds=caas_rds'
---map 'module.capture_ui["dmvhm"]=capture_ui["dmvhm"]'
---map 'module.lambda_vpc["dmvhm"]=lambda_vpc-dmvhm'
+--map 'module.core_rds=core_rds'
+--map 'module.console_ui["mysvc"]=console_ui["mysvc"]'
+--map 'module.lambda_vpc["mysvc"]=lambda_vpc-mysvc'
 ```
 
 - **Left side**: TF module path as it appears in `terraformPath` in the digest
@@ -298,9 +315,9 @@ CLI flags override file entries).
 **Mapping file** (`--mapping-file mappings.yaml`):
 ```yaml
 mappings:
-  module.caas_rds: caas_rds
-  module.capture_ui["dmvhm"]: capture_ui["dmvhm"]
-  module.lambda_vpc["dmvhm"]: lambda_vpc-dmvhm
+  module.core_rds: core_rds
+  module.console_ui["mysvc"]: console_ui["mysvc"]
+  module.lambda_vpc["mysvc"]: lambda_vpc-mysvc
 ```
 
 Root-level resources (no module / no parent) are matched automatically without mappings.
@@ -312,10 +329,10 @@ as logical name suffixes (the convention enforced by the component generation
 skill):
 
 ```
-TF digest:   module.caas_rds.aws_rds_cluster.aurora_cluster
+TF digest:   module.core_rds.aws_rds_cluster.aurora_cluster
                                               ^^^^^^^^^^^^^^ extractResourceName → "aurora_cluster"
 
-Import file: name: "caas_rds-aurora_cluster", parent: "caas_rds"
+Import file: name: "core_rds-aurora_cluster", parent: "core_rds"
                             ^^^^^^^^^^^^^^ extractImportSuffix → "aurora_cluster"
 
 Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
@@ -326,26 +343,26 @@ Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
  │    tf-digest.json      │          │     import.json          │
  │                        │          │                          │
  │  modules:              │          │  resources:              │
- │    module.caas_rds:    │          │    - type: Component     │
- │      - aws_rds_cluster │          │      name: caas_rds      │
+ │    module.core_rds:    │          │    - type: Component     │
+ │      - aws_rds_cluster │          │      name: core_rds      │
  │        .aurora_cluster │          │      component: true     │
  │        id: cluster-123 │          │                          │
  │      - aws_rds_cluster_│          │    - type: aws:rds/...   │
- │        instance.inst   │          │      name: caas_rds-     │
+ │        instance.inst   │          │      name: core_rds-     │
  │        id: inst-456    │          │        aurora_cluster    │
  │                        │          │      id: <PLACEHOLDER>   │
- │  rootResources:        │          │      parent: caas_rds    │
+ │  rootResources:        │          │      parent: core_rds    │
  │    - aws_s3_bucket     │          │                          │
  │      .my_bucket        │          │    - type: aws:rds/...   │
- │      id: my-bucket     │          │      name: caas_rds-inst │
+ │      id: my-bucket     │          │      name: core_rds-inst │
  └───────────┬────────────┘          │      id: <PLACEHOLDER>   │
-             │                       │      parent: caas_rds    │
+             │                       │      parent: core_rds    │
              │    ┌──────────────┐   │                          │
              │    │   mappings   │   │    - type: aws:s3/...    │
              │    │              │   │      name: my_bucket     │
              │    │ module.      │   │      id: <PLACEHOLDER>   │
-             │    │ caas_rds     │   └──────────┬───────────────┘
-             │    │  = caas_rds  │               │
+             │    │ core_rds     │   └──────────┬───────────────┘
+             │    │  = core_rds  │               │
              │    └──────┬───────┘               │
              │           │                       │
              ▼           ▼                       ▼
@@ -353,11 +370,11 @@ Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
      │           import-id-match command                 │
      │                                                   │
      │  1. Group import entries by parent                │
-     │     caas_rds → [aurora_cluster, inst]             │
+     │     core_rds → [aurora_cluster, inst]             │
      │     (orphans) → [my_bucket]                       │
      │                                                   │
      │  2. Group TF resources by module path             │
-     │     module.caas_rds → [aurora_cluster, inst]      │
+     │     module.core_rds → [aurora_cluster, inst]      │
      │     root → [my_bucket]                            │
      │                                                   │
      │  3. Pair via mappings                             │
@@ -374,6 +391,112 @@ Match: type=aws:rds/cluster:Cluster + name="aurora_cluster" → fill ID
               │   my_bucket: my-bucket       │
               └──────────────────────────────┘
 ```
+
+---
+
+## `import` command
+
+Runs `pulumi import` over a prepared import file in batches, and — when a batch does not fully
+land — re-imports the missing resources one at a time to identify exactly which import IDs are
+bad. One run therefore reports every bad ID, instead of one per run.
+
+### Why not just run `pulumi import` directly
+
+You can, and for a small stack that is fine. Two things make it painful at scale:
+
+**A failed run is partial, and the error doesn't say what landed.** `pulumi import` executes the
+file as a single deployment in which each entry is a step. Steps run concurrently and each
+success is committed to state as it completes; one failing step fails the deployment with a
+non-zero exit, but nothing is rolled back, and with limited parallelism later steps may never
+have started. So a failed run typically leaves some resources imported and some not — and the
+error text tells you only that the deployment failed.
+
+**The exit status is not a reliable success signal either.** `auto.Stack.ImportResources` returns
+an error after a *successful* import whenever code generation is disabled, which this workflow
+always disables ([pulumi/pulumi#24103](https://github.com/pulumi/pulumi/issues/24103)).
+
+This command sidesteps both by reading stack state after each import and treating **presence in
+state** as the only verdict. Resources are matched on type *and* name.
+
+### Usage
+
+```bash
+# Inspect the plan without importing anything
+pulumi plugin run terraform-migrate -- import \
+  --file imports-ready.json \
+  --project-dir . --stack dev \
+  --dry-run
+
+# Import (wrap in `pulumi env run <env> --` if your credentials come from ESC)
+pulumi plugin run terraform-migrate -- import \
+  --file imports-ready.json \
+  --project-dir . --stack dev \
+  --batch-size 100
+```
+
+Progress goes to stderr, the summary to stdout. Exit code is 0 when nothing failed, 1 otherwise.
+
+### What a run reports
+
+Progress on stderr:
+
+```
+Batch 1/1 (4 resources)
+  isolating 1 failure(s)
+```
+
+Summary on stdout, for a batch of four in which one import ID was malformed:
+
+```
+Import summary (1 batches)
+  Imported: 3
+  Skipped:  0 (already in state)
+  Failed:   1
+
+FAILED RESOURCES
+  int-bad (random:index/randomInteger:RandomInteger)
+    id:    NOT-A-VALID-INTEGER-IMPORT-ID
+    error:
+      resource not present in stack state after import (last error: failed to import resources: exit status 1
+      code: 1
+      pulumi:pulumi:Stack livecheck-dev5 running error: update failed: step application failed: Import Random Integer Error: Invalid import usage: expecting {result},{min},{max} or {result},{min},{max},{seed}
+      error: [ERROR] Invalid import usage: expecting {result},{min},{max} or {result},{min},{max},{seed}: Import Random Integer Error
+      ... (8 more lines suppressed)
+
+Fix the import IDs above and re-run; imported resources are skipped.
+```
+
+Note `Imported: 3` alongside `Failed: 1`: the underlying deployment exited non-zero, but three of
+the four resources had genuinely imported. That is the partial-failure behavior described above,
+and the reason the summary is derived from stack state rather than from the exit status.
+
+Fix the reported IDs and re-run — resume is on by default, so everything already in state is
+skipped and only the failures are retried.
+
+### Behavior worth knowing
+
+- **Every batch carries every `component: true` entry.** `pulumi import` resolves a resource's
+  `parent` through the `nameTable`; a child imported without its component fails with
+  `has no entry in 'nameTable'`.
+- **Resume is on by default** (`--no-resume` disables it), so a re-run after fixing IDs is safe
+  and cheap.
+- **Resources are always imported unprotected and without code generation.** Both are
+  requirements of the hand-authored migration workflow, so neither is a flag: `--protect` would
+  leave a permanent `~protect` diff, and generated code defeats the point of hand-authoring.
+- **Isolation is worst-case quadratic.** A batch in which everything fails costs one extra
+  `pulumi import` invocation per resource. That only happens on a run that was going to fail
+  anyway, and the diagnostic is worth it.
+
+### Flags
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--file` | Yes | Prepared import file (from `import-id-match` or `resolve`) |
+| `--stack` | Yes | Pulumi stack name |
+| `--project-dir` | No | Pulumi project directory (default `.`) |
+| `--batch-size` | No | Resources per batch (default 100) |
+| `--no-resume` | No | Import resources even if already present in stack state |
+| `--dry-run` | No | Print the batch plan and exit without importing |
 
 ---
 
