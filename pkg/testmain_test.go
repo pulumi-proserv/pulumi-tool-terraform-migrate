@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -65,6 +66,17 @@ func TestMain(m *testing.M) {
 	// This prevents "text file busy" when parallel tests exec the same provider binary.
 	tfDir, err := filepath.Abs(filepath.Join("testdata", "tf_indexed_modules"))
 	if err == nil {
+		// Ensure the fixture is initialized (local modules installed + provider
+		// plugins downloaded) before the parallel tests load it. A fresh checkout
+		// (CI, a new clone) has no .terraform dir; running init here once, serially,
+		// also avoids a race between parallel tests each trying to auto-init.
+		if _, statErr := os.Stat(filepath.Join(tfDir, ".terraform", "providers")); statErr != nil {
+			initCmd := exec.Command("tofu", "init", "-input=false", "-no-color")
+			initCmd.Dir = tfDir
+			if out, initErr := initCmd.CombinedOutput(); initErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: tofu init for %s failed: %v\n%s\n", tfDir, initErr, out)
+			}
+		}
 		if _, statErr := os.Stat(filepath.Join(tfDir, ".terraform", "providers")); statErr == nil {
 			config, configErr := LoadConfig(tfDir)
 			if configErr == nil {
