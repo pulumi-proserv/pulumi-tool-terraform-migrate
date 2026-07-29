@@ -236,13 +236,7 @@ func buildNotReadByType(fieldsFile *FieldsFile) map[string]map[string]notReadFie
 		if len(cat.NotRead) > 0 {
 			fields := make(map[string]notReadFieldMeta, len(cat.NotRead))
 			for pulumiField, info := range cat.NotRead {
-				fields[pulumiField] = notReadFieldMeta{
-					Default:       info.Default,
-					Asset:         info.Asset,
-					AssetKind:     info.AssetKind,
-					ArchiveFormat: info.ArchiveFormat,
-					HashField:     info.HashField,
-				}
+				fields[pulumiField] = notReadFieldMeta(info)
 			}
 			notReadByType[fullType] = fields
 			st := shortPulumiType(fullType)

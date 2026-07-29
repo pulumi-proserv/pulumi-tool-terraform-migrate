@@ -31,24 +31,24 @@ type StackDigest struct {
 // the AWS-lookup types (pre-resolved because they need live AWS); pure types
 // are composed later by `resolve cfn` from Attributes.
 type CfnResource struct {
-	LogicalID      string                 `json:"logicalId"`
-	CfnType        string                 `json:"cfnType"`
-	PulumiType     string                 `json:"pulumiType,omitempty"`
-	PhysicalID     string                 `json:"physicalId,omitempty"`
+	LogicalID  string `json:"logicalId"`
+	CfnType    string `json:"cfnType"`
+	PulumiType string `json:"pulumiType,omitempty"`
+	PhysicalID string `json:"physicalId,omitempty"`
 	// Region is the stack's region (a CloudFormation stack is single-region), set
 	// on every resource so region-scoped consumers (e.g. Lambda code download in
 	// patch-state cfn) can read it per-resource without a separate flag.
-	Region string `json:"region,omitempty"`
-	ImportID       string                 `json:"importId,omitempty"`       // pre-resolved (lookup types only)
-	NativeImportID string                 `json:"nativeImportId,omitempty"` // aws-native composite ID (API Gateway family)
+	Region         string `json:"region,omitempty"`
+	ImportID       string `json:"importId,omitempty"`       // pre-resolved (lookup types only)
+	NativeImportID string `json:"nativeImportId,omitempty"` // aws-native composite ID (API Gateway family)
 	// SecretVersionImportID is set only for AWS::SecretsManager::Secret after live
 	// enrichment: the import ID (arn|versionId) for the companion aws:secretsmanager/
 	// secretVersion the agent must author (the version is not a CFN resource).
-	SecretVersionImportID string `json:"secretVersionImportId,omitempty"`
-	Attributes     map[string]interface{} `json:"attributes,omitempty"`
-	DerivedName    string                 `json:"derivedName,omitempty"`
-	CdkHashedName  bool                   `json:"cdkHashedName,omitempty"`
-	ServerAssigned bool                   `json:"serverAssigned,omitempty"`
-	Skipped        bool                   `json:"skipped,omitempty"`
-	SkipReason     string                 `json:"skipReason,omitempty"`
+	SecretVersionImportID string                 `json:"secretVersionImportId,omitempty"`
+	Attributes            map[string]interface{} `json:"attributes,omitempty"`
+	DerivedName           string                 `json:"derivedName,omitempty"`
+	CdkHashedName         bool                   `json:"cdkHashedName,omitempty"`
+	ServerAssigned        bool                   `json:"serverAssigned,omitempty"`
+	Skipped               bool                   `json:"skipped,omitempty"`
+	SkipReason            string                 `json:"skipReason,omitempty"`
 }
