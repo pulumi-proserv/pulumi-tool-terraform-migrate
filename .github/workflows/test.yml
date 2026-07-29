@@ -22,8 +22,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # The OIDC token exchange and AWS credential export only work on the
+      # canonical (non-fork) repo, where Pulumi's OIDC trust is configured.
+      # On the fork these steps 401, so skip them — the test suite passes
+      # without AWS credentials. Remove the guards once the repo is deforked
+      # and OIDC is set up for it.
       - name: Generate Pulumi Access Token
         id: generate_pulumi_token
+        if: ${{ !github.event.repository.fork }}
         uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1.0.1
         with:
           organization: pulumi
@@ -31,6 +37,7 @@ jobs:
           export-environment-variables: false
 
       - name: Export AWS Credentials
+        if: ${{ !github.event.repository.fork }}
         uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5 # v1.5.0
         env:
           PULUMI_ACCESS_TOKEN: ${{ steps.generate_pulumi_token.outputs.pulumi-access-token }}
